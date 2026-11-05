@@ -1,5 +1,5 @@
 import { prisma } from './prisma.js';
-import { WorkspaceRole } from '@mindvault/shared';
+import { WorkspaceRole, DocumentStatus } from '@mindvault/shared';
 
 export interface UserRecord {
   id: string;
@@ -41,6 +41,47 @@ export interface SessionRecord {
   user?: UserRecord;
 }
 
+export interface DocumentRecord {
+  id: string;
+  workspaceId: string;
+  uploadedById: string;
+  originalName: string;
+  mimeType: string;
+  extension: string;
+  sizeBytes: bigint;
+  checksum: string;
+  storageKey: string;
+  status: DocumentStatus;
+  errorMessage: string | null;
+  pageCount: number | null;
+  chunkCount: number;
+  embeddingModel: string | null;
+  embeddingDimension: number | null;
+  metadata: any;
+  createdAt: Date;
+  updatedAt: Date;
+  processedAt: Date | null;
+  uploadedBy?: {
+    id: string;
+    name: string;
+    email: string;
+  };
+}
+
+export interface DocumentChunkRecord {
+  id: string;
+  documentId: string;
+  workspaceId: string;
+  chunkIndex: number;
+  content: string;
+  tokenCount: number;
+  pageStart: number | null;
+  pageEnd: number | null;
+  metadata: any;
+  embedding?: number[] | null;
+  createdAt: Date;
+}
+
 export interface IDatabaseService {
   // User operations
   createUser(data: { name: string; email: string; passwordHash: string }): Promise<UserRecord>;
@@ -77,6 +118,64 @@ export interface IDatabaseService {
   revokeSession(sessionId: string): Promise<void>;
   revokeAllUserSessions(userId: string): Promise<void>;
   listActiveSessions(userId: string): Promise<SessionRecord[]>;
+
+  // Document operations (Phase 2)
+  createDocument(data: {
+    id?: string;
+    workspaceId: string;
+    uploadedById: string;
+    originalName: string;
+    mimeType: string;
+    extension: string;
+    sizeBytes: bigint;
+    checksum: string;
+    storageKey: string;
+    status?: DocumentStatus;
+    metadata?: Record<string, unknown>;
+  }): Promise<DocumentRecord>;
+  findDocumentById(id: string): Promise<DocumentRecord | null>;
+  findDocumentByChecksum(workspaceId: string, checksum: string): Promise<DocumentRecord | null>;
+  listDocuments(
+    workspaceId: string,
+    options?: {
+      status?: DocumentStatus;
+      search?: string;
+      skip?: number;
+      take?: number;
+    },
+  ): Promise<{ items: DocumentRecord[]; total: number }>;
+  updateDocument(
+    id: string,
+    data: {
+      status?: DocumentStatus;
+      errorMessage?: string | null;
+      pageCount?: number | null;
+      chunkCount?: number;
+      embeddingModel?: string | null;
+      embeddingDimension?: number | null;
+      processedAt?: Date | null;
+      metadata?: Record<string, unknown>;
+    },
+  ): Promise<DocumentRecord>;
+  deleteDocument(id: string): Promise<void>;
+
+  // Chunk operations (Phase 2)
+  createDocumentChunks(
+    chunks: Array<{
+      id?: string;
+      documentId: string;
+      workspaceId: string;
+      chunkIndex: number;
+      content: string;
+      tokenCount: number;
+      pageStart?: number | null;
+      pageEnd?: number | null;
+      metadata?: Record<string, unknown>;
+      embedding?: number[];
+    }>,
+  ): Promise<void>;
+  getDocumentChunks(documentId: string): Promise<DocumentChunkRecord[]>;
+  deleteDocumentChunks(documentId: string): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -266,6 +365,194 @@ export class PrismaDatabaseService implements IDatabaseService {
       orderBy: { createdAt: 'desc' },
     });
   }
+
+  async createDocument(data: {
+    id?: string;
+    workspaceId: string;
+    uploadedById: string;
+    originalName: string;
+    mimeType: string;
+    extension: string;
+    sizeBytes: bigint;
+    checksum: string;
+    storageKey: string;
+    status?: DocumentStatus;
+    metadata?: Record<string, unknown>;
+  }): Promise<DocumentRecord> {
+    const doc = await prisma.document.create({
+      data: {
+        id: data.id,
+        workspaceId: data.workspaceId,
+        uploadedById: data.uploadedById,
+        originalName: data.originalName,
+        mimeType: data.mimeType,
+        extension: data.extension,
+        sizeBytes: data.sizeBytes,
+        checksum: data.checksum,
+        storageKey: data.storageKey,
+        status: data.status || 'UPLOADED',
+        metadata: (data.metadata as any) || {},
+      },
+    });
+    return doc as unknown as DocumentRecord;
+  }
+
+  async findDocumentById(id: string): Promise<DocumentRecord | null> {
+    const doc = await prisma.document.findUnique({
+      where: { id },
+      include: {
+        uploadedBy: {
+          select: { id: true, name: true, email: true },
+        },
+      },
+    });
+    return (doc as unknown as DocumentRecord) || null;
+  }
+
+  async findDocumentByChecksum(
+    workspaceId: string,
+    checksum: string,
+  ): Promise<DocumentRecord | null> {
+    const doc = await prisma.document.findFirst({
+      where: {
+        workspaceId,
+        checksum,
+        status: { not: 'FAILED' },
+      },
+      include: {
+        uploadedBy: {
+          select: { id: true, name: true, email: true },
+        },
+      },
+    });
+    return (doc as unknown as DocumentRecord) || null;
+  }
+
+  async listDocuments(
+    workspaceId: string,
+    options?: {
+      status?: DocumentStatus;
+      search?: string;
+      skip?: number;
+      take?: number;
+    },
+  ): Promise<{ items: DocumentRecord[]; total: number }> {
+    const where: any = { workspaceId };
+    if (options?.status) {
+      where.status = options.status;
+    }
+    if (options?.search) {
+      where.originalName = { contains: options.search, mode: 'insensitive' };
+    }
+
+    const [total, items] = await Promise.all([
+      prisma.document.count({ where }),
+      prisma.document.findMany({
+        where,
+        skip: options?.skip || 0,
+        take: options?.take || 20,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          uploadedBy: {
+            select: { id: true, name: true, email: true },
+          },
+        },
+      }),
+    ]);
+
+    return {
+      items: items as unknown as DocumentRecord[],
+      total,
+    };
+  }
+
+  async updateDocument(
+    id: string,
+    data: {
+      status?: DocumentStatus;
+      errorMessage?: string | null;
+      pageCount?: number | null;
+      chunkCount?: number;
+      embeddingModel?: string | null;
+      embeddingDimension?: number | null;
+      processedAt?: Date | null;
+      metadata?: Record<string, unknown>;
+    },
+  ): Promise<DocumentRecord> {
+    const doc = await prisma.document.update({
+      where: { id },
+      data: {
+        ...data,
+        metadata: data.metadata ? (data.metadata as any) : undefined,
+      },
+    });
+    return doc as unknown as DocumentRecord;
+  }
+
+  async deleteDocument(id: string): Promise<void> {
+    await prisma.$transaction(async (tx) => {
+      await tx.documentChunk.deleteMany({ where: { documentId: id } });
+      await tx.document.delete({ where: { id } });
+    });
+  }
+
+  async createDocumentChunks(
+    chunks: Array<{
+      id?: string;
+      documentId: string;
+      workspaceId: string;
+      chunkIndex: number;
+      content: string;
+      tokenCount: number;
+      pageStart?: number | null;
+      pageEnd?: number | null;
+      metadata?: Record<string, unknown>;
+      embedding?: number[];
+    }>,
+  ): Promise<void> {
+    if (chunks.length === 0) return;
+    const documentId = chunks[0].documentId;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.documentChunk.deleteMany({ where: { documentId } });
+      for (const chunk of chunks) {
+        const chunkId = chunk.id || `chk_${Math.random().toString(36).slice(2, 11)}`;
+        if (chunk.embedding && chunk.embedding.length > 0) {
+          const vectorStr = `[${chunk.embedding.join(',')}]`;
+          await tx.$executeRaw`
+            INSERT INTO "document_chunks" ("id", "documentId", "workspaceId", "chunkIndex", "content", "tokenCount", "pageStart", "pageEnd", "metadata", "embedding", "createdAt")
+            VALUES (${chunkId}, ${chunk.documentId}, ${chunk.workspaceId}, ${chunk.chunkIndex}, ${chunk.content}, ${chunk.tokenCount}, ${chunk.pageStart}, ${chunk.pageEnd}, ${JSON.stringify(chunk.metadata || {})}::jsonb, ${vectorStr}::vector, NOW())
+          `;
+        } else {
+          await tx.documentChunk.create({
+            data: {
+              id: chunkId,
+              documentId: chunk.documentId,
+              workspaceId: chunk.workspaceId,
+              chunkIndex: chunk.chunkIndex,
+              content: chunk.content,
+              tokenCount: chunk.tokenCount,
+              pageStart: chunk.pageStart,
+              pageEnd: chunk.pageEnd,
+              metadata: (chunk.metadata as any) || {},
+            },
+          });
+        }
+      }
+    });
+  }
+
+  async getDocumentChunks(documentId: string): Promise<DocumentChunkRecord[]> {
+    const chunks = await prisma.documentChunk.findMany({
+      where: { documentId },
+      orderBy: { chunkIndex: 'asc' },
+    });
+    return chunks as unknown as DocumentChunkRecord[];
+  }
+
+  async deleteDocumentChunks(documentId: string): Promise<void> {
+    await prisma.documentChunk.deleteMany({ where: { documentId } });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -276,6 +563,8 @@ export class InMemoryDatabaseService implements IDatabaseService {
   public workspaces: Map<string, WorkspaceRecord> = new Map();
   public members: Map<string, WorkspaceMemberRecord> = new Map();
   public sessions: Map<string, SessionRecord> = new Map();
+  public documents: Map<string, DocumentRecord> = new Map();
+  public chunks: Map<string, DocumentChunkRecord> = new Map();
 
   async createUser(data: {
     name: string;
@@ -342,6 +631,22 @@ export class InMemoryDatabaseService implements IDatabaseService {
     this.members.set(`${data.ownerId}_${workspace.id}`, member);
 
     return { workspace, member };
+  }
+
+  async addWorkspaceMember(
+    workspaceId: string,
+    userId: string,
+    role: WorkspaceRole = 'MEMBER',
+  ): Promise<WorkspaceMemberRecord> {
+    const member: WorkspaceMemberRecord = {
+      id: `mem_${Math.random().toString(36).slice(2, 11)}`,
+      userId,
+      workspaceId,
+      role,
+      joinedAt: new Date(),
+    };
+    this.members.set(`${userId}_${workspaceId}`, member);
+    return member;
   }
 
   async findWorkspaceById(id: string): Promise<WorkspaceRecord | null> {
@@ -507,11 +812,199 @@ export class InMemoryDatabaseService implements IDatabaseService {
     return result.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   }
 
+  async createDocument(data: {
+    id?: string;
+    workspaceId: string;
+    uploadedById: string;
+    originalName: string;
+    mimeType: string;
+    extension: string;
+    sizeBytes: bigint;
+    checksum: string;
+    storageKey: string;
+    status?: DocumentStatus;
+    metadata?: Record<string, unknown>;
+  }): Promise<DocumentRecord> {
+    const doc: DocumentRecord = {
+      id: data.id || `doc_${Math.random().toString(36).slice(2, 11)}`,
+      workspaceId: data.workspaceId,
+      uploadedById: data.uploadedById,
+      originalName: data.originalName,
+      mimeType: data.mimeType,
+      extension: data.extension,
+      sizeBytes: data.sizeBytes,
+      checksum: data.checksum,
+      storageKey: data.storageKey,
+      status: data.status || 'UPLOADED',
+      errorMessage: null,
+      pageCount: null,
+      chunkCount: 0,
+      embeddingModel: null,
+      embeddingDimension: null,
+      metadata: data.metadata || {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      processedAt: null,
+    };
+    this.documents.set(doc.id, doc);
+    return doc;
+  }
+
+  async findDocumentById(id: string): Promise<DocumentRecord | null> {
+    const doc = this.documents.get(id);
+    if (!doc) return null;
+    const user = this.users.get(doc.uploadedById);
+    return {
+      ...doc,
+      uploadedBy: user ? { id: user.id, name: user.name, email: user.email } : undefined,
+    };
+  }
+
+  async findDocumentByChecksum(
+    workspaceId: string,
+    checksum: string,
+  ): Promise<DocumentRecord | null> {
+    for (const doc of this.documents.values()) {
+      if (doc.workspaceId === workspaceId && doc.checksum === checksum && doc.status !== 'FAILED') {
+        return doc;
+      }
+    }
+    return null;
+  }
+
+  async listDocuments(
+    workspaceId: string,
+    options?: {
+      status?: DocumentStatus;
+      search?: string;
+      skip?: number;
+      take?: number;
+    },
+  ): Promise<{ items: DocumentRecord[]; total: number }> {
+    let docs = Array.from(this.documents.values()).filter(
+      (d) => d.workspaceId === workspaceId && d.status !== 'DELETING',
+    );
+    if (options?.status) {
+      docs = docs.filter((d) => d.status === options.status);
+    }
+    if (options?.search) {
+      const q = options.search.toLowerCase();
+      docs = docs.filter((d) => d.originalName.toLowerCase().includes(q));
+    }
+    docs.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    const total = docs.length;
+    const skip = options?.skip || 0;
+    const take = options?.take || 20;
+    const items = docs.slice(skip, skip + take).map((doc) => {
+      const user = this.users.get(doc.uploadedById);
+      return {
+        ...doc,
+        uploadedBy: user ? { id: user.id, name: user.name, email: user.email } : undefined,
+      };
+    });
+    return { items, total };
+  }
+
+  async updateDocument(
+    id: string,
+    data: {
+      status?: DocumentStatus;
+      errorMessage?: string | null;
+      pageCount?: number | null;
+      chunkCount?: number;
+      embeddingModel?: string | null;
+      embeddingDimension?: number | null;
+      processedAt?: Date | null;
+      metadata?: Record<string, unknown>;
+    },
+  ): Promise<DocumentRecord> {
+    const doc = this.documents.get(id);
+    if (!doc) throw new Error('Document not found');
+    const updated: DocumentRecord = {
+      ...doc,
+      ...data,
+      metadata: data.metadata ? { ...doc.metadata, ...data.metadata } : doc.metadata,
+      updatedAt: new Date(),
+    };
+    this.documents.set(id, updated);
+    return updated;
+  }
+
+  async deleteDocument(id: string): Promise<void> {
+    this.documents.delete(id);
+    for (const [chkId, chk] of this.chunks.entries()) {
+      if (chk.documentId === id) {
+        this.chunks.delete(chkId);
+      }
+    }
+  }
+
+  async createDocumentChunks(
+    chunks: Array<{
+      id?: string;
+      documentId: string;
+      workspaceId: string;
+      chunkIndex: number;
+      content: string;
+      tokenCount: number;
+      pageStart?: number | null;
+      pageEnd?: number | null;
+      metadata?: Record<string, unknown>;
+      embedding?: number[];
+    }>,
+  ): Promise<void> {
+    if (chunks.length === 0) return;
+    const documentId = chunks[0].documentId;
+    // Clear existing chunks for idempotency
+    for (const [chkId, chk] of this.chunks.entries()) {
+      if (chk.documentId === documentId) {
+        this.chunks.delete(chkId);
+      }
+    }
+    for (const chunk of chunks) {
+      const chkId = chunk.id || `chk_${Math.random().toString(36).slice(2, 11)}`;
+      const record: DocumentChunkRecord = {
+        id: chkId,
+        documentId: chunk.documentId,
+        workspaceId: chunk.workspaceId,
+        chunkIndex: chunk.chunkIndex,
+        content: chunk.content,
+        tokenCount: chunk.tokenCount,
+        pageStart: chunk.pageStart || null,
+        pageEnd: chunk.pageEnd || null,
+        metadata: chunk.metadata || {},
+        embedding: chunk.embedding || null,
+        createdAt: new Date(),
+      };
+      this.chunks.set(chkId, record);
+    }
+  }
+
+  async getDocumentChunks(documentId: string): Promise<DocumentChunkRecord[]> {
+    const result: DocumentChunkRecord[] = [];
+    for (const chk of this.chunks.values()) {
+      if (chk.documentId === documentId) {
+        result.push(chk);
+      }
+    }
+    return result.sort((a, b) => a.chunkIndex - b.chunkIndex);
+  }
+
+  async deleteDocumentChunks(documentId: string): Promise<void> {
+    for (const [chkId, chk] of this.chunks.entries()) {
+      if (chk.documentId === documentId) {
+        this.chunks.delete(chkId);
+      }
+    }
+  }
+
   clear(): void {
     this.users.clear();
     this.workspaces.clear();
     this.members.clear();
     this.sessions.clear();
+    this.documents.clear();
+    this.chunks.clear();
   }
 }
 

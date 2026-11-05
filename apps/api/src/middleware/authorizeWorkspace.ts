@@ -19,17 +19,37 @@ export function authorizeWorkspace(minRole: WorkspaceRole = 'MEMBER') {
       return;
     }
 
-    const workspaceId =
-      req.params.id ||
+    let workspaceId =
       req.params.workspaceId ||
-      (req.headers['x-workspace-id'] as string | undefined);
+      (req.headers['x-workspace-id'] as string | undefined) ||
+      (req.query.workspaceId as string | undefined) ||
+      (req.body?.workspaceId as string | undefined);
+
+    if (!workspaceId) {
+      if (req.baseUrl.includes('workspaces') && req.params.id) {
+        workspaceId = req.params.id;
+      } else if (req.baseUrl.includes('documents') && req.params.id) {
+        const doc = await dbService.findDocumentById(req.params.id);
+        if (doc) {
+          workspaceId = doc.workspaceId;
+        } else {
+          res.status(404).json({
+            success: false,
+            error: { code: 'DOCUMENT_NOT_FOUND', message: 'Document not found' },
+            meta: { timestamp: new Date().toISOString() },
+          });
+          return;
+        }
+      }
+    }
 
     if (!workspaceId) {
       res.status(400).json({
         success: false,
         error: {
           code: 'MISSING_WORKSPACE_ID',
-          message: 'Workspace ID must be provided via URL parameter or X-Workspace-ID header',
+          message:
+            'Workspace ID must be provided via URL parameter, query, body, or X-Workspace-ID header',
         },
         meta: { timestamp: new Date().toISOString() },
       });

@@ -1,10 +1,23 @@
+import { Worker, Job } from 'bullmq';
 import { Logger } from './utils/logger.js';
 import { env } from './config/env.js';
+import type { ProcessDocumentJobPayload } from '@mindvault/shared';
+import { DocumentIngestionPipeline } from './modules/ingestion/pipeline.js';
+import { WorkerStorageProvider } from './lib/storage.js';
+import { PrismaWorkerDatabaseService } from './lib/db.js';
+import { createEmbeddingProvider } from './modules/ingestion/embeddings/index.js';
 
 export class WorkerService {
   private logger = new Logger('WorkerService');
   private isRunning = false;
-  private heartbeatInterval?: NodeJS.Timeout;
+  private bullWorker: Worker<ProcessDocumentJobPayload> | null = null;
+  private pipeline: DocumentIngestionPipeline | null = null;
+
+  constructor(pipeline?: DocumentIngestionPipeline) {
+    if (pipeline) {
+      this.pipeline = pipeline;
+    }
+  }
 
   public async start(): Promise<void> {
     if (this.isRunning) {
@@ -18,14 +31,55 @@ export class WorkerService {
       redisUrl: env.REDIS_URL,
       environment: env.NODE_ENV,
     });
-    this.logger.info('Ready for queue processing (BullMQ queues ready for Phase 2 registration)');
 
-    // Start a lightweight heartbeat in dev/test to monitor worker liveness
-    this.heartbeatInterval = setInterval(() => {
-      if (this.isRunning) {
-        this.logger.debug('Worker heartbeat: active and listening for jobs');
-      }
-    }, 60000);
+    // Initialize pipeline if not injected
+    if (!this.pipeline) {
+      const storage = new WorkerStorageProvider();
+      const embeddingProvider = createEmbeddingProvider();
+      const db = new PrismaWorkerDatabaseService();
+      this.pipeline = new DocumentIngestionPipeline(storage, embeddingProvider, db);
+    }
+
+    // In test environment, skip spinning up live BullMQ socket unless requested
+    if (env.NODE_ENV === 'test') {
+      this.logger.info('Worker initialized in test mode (BullMQ listener ready for dispatch)');
+      return;
+    }
+
+    try {
+      this.bullWorker = new Worker<ProcessDocumentJobPayload>(
+        'document-processing',
+        async (job: Job<ProcessDocumentJobPayload>) => {
+          this.logger.info(`Processing job ${job.id} for document ${job.data.documentId}`);
+          await this.pipeline!.processDocument(job.data);
+        },
+        {
+          concurrency: env.WORKER_CONCURRENCY,
+          connection: {
+            url: env.REDIS_URL,
+            maxRetriesPerRequest: null,
+          },
+        },
+      );
+
+      this.bullWorker.on('completed', (job: Job) => {
+        this.logger.info(`Job ${job.id} completed successfully`);
+      });
+
+      this.bullWorker.on('failed', (job: Job | undefined, err: Error) => {
+        this.logger.error(`Job ${job?.id} failed: ${err.message}`);
+      });
+
+      this.bullWorker.on('error', (err: Error) => {
+        this.logger.warn(`BullMQ worker connection error: ${err.message}`);
+      });
+
+      this.logger.info('BullMQ worker actively listening on queue "document-processing"');
+    } catch (err: any) {
+      this.logger.warn(
+        `Could not connect BullMQ worker to Redis: ${err.message}. Worker running in standby.`,
+      );
+    }
   }
 
   public async stop(): Promise<void> {
@@ -34,8 +88,9 @@ export class WorkerService {
     }
 
     this.logger.info('🛑 Stopping worker service, releasing resources...');
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval);
+    if (this.bullWorker) {
+      await this.bullWorker.close();
+      this.bullWorker = null;
     }
 
     this.isRunning = false;
@@ -44,5 +99,9 @@ export class WorkerService {
 
   public getActiveStatus(): boolean {
     return this.isRunning;
+  }
+
+  public getPipeline(): DocumentIngestionPipeline | null {
+    return this.pipeline;
   }
 }

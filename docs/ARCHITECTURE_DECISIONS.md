@@ -102,3 +102,21 @@ This document records the foundational architectural decisions made for MindVaul
   - Complete multi-tenant isolation at both route middleware and database query layers.
   - Elimination of cross-tenant IDOR attack vectors.
   - Clear, extensible permission model for future multi-user collaboration.
+
+---
+
+## ADR-009: Document Ingestion, 768-Dimensional Vector Storage (nomic-embed-text), and Asynchronous Worker Pipeline
+
+- **Status:** Accepted
+- **Context:** MindVault requires converting user-provided multi-format documents (`.pdf`, `.docx`, `.txt`, `.md`) into high-quality semantic vector knowledge. Running extraction and embedding generation synchronously during file upload would block Express event loop threads and cause client HTTP timeouts. Additionally, vector dimension selection locks database column types and vector index structures; changing dimension later requires table reconstruction and re-embedding.
+- **Decision:**
+  - **Decoupled Architecture:** Build an asynchronous BullMQ queue (`document-processing`) backed by Redis. The Express API validates magic bytes, computes SHA-256 checksums, detects duplicate uploads within the workspace, stores original files securely outside web roots, records initial metadata, and responds immediately with `202 Accepted` (`status: 'QUEUED'`).
+  - **Standardized Vector Dimension (768-dim):** Standardize all embeddings on **768 dimensions**. In local development, MindVault defaults to Ollama running `nomic-embed-text` (v1.5, 8192 token context window, 768 dimensions). This dimension matches Google Gemini `text-embedding-004` (768 dimensions), providing full provider portability without PostgreSQL schema migrations.
+  - **PostgreSQL Vector Storage:** Store embeddings in PostgreSQL `DocumentChunk` records using `vector(768)` indexed with an HNSW cosine index (`m = 16, ef_construction = 64, vector_cosine_ops`).
+  - **Structure-Aware Chunking:** Implement intelligent chunking (target 700 tokens, max 900 tokens, 120 tokens overlap) that preserves section headings, detects paragraph boundaries, and falls back to sentence and word splitting for oversized blocks.
+  - **Multi-Tenant Isolation:** Document storage paths and PostgreSQL queries are strictly scoped by `workspaceId`. IDOR attempts are rejected at both middleware and data access layers.
+- **Consequences:**
+  - Upload endpoints respond instantaneously (< 20ms) regardless of document page count.
+  - Worker execution is fully decoupled and resilient with automatic retries and exponential backoff.
+  - Zero external cloud API dependencies required for local development; 100% private and offline-capable.
+  - HNSW index ensures sub-millisecond approximate nearest neighbor (ANN) retrieval in Phase 3.

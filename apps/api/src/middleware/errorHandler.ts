@@ -2,10 +2,17 @@ import { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
 import { env } from '../config/env.js';
 
-export interface AppError extends Error {
-  statusCode?: number;
-  code?: string;
-  details?: unknown;
+export class AppError extends Error {
+  constructor(
+    public statusCode: number,
+    public code: string,
+    message: string,
+    public details?: unknown,
+  ) {
+    super(message);
+    this.name = 'AppError';
+    Object.setPrototypeOf(this, AppError.prototype);
+  }
 }
 
 export function errorHandler(

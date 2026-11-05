@@ -198,9 +198,43 @@ REFRESH_TOKEN_EXPIRY_DAYS="7"
 
 ---
 
-## 8. Troubleshooting
+## 8. Document Ingestion & Local Vector Infrastructure
+
+### Storage Directory:
+
+Original uploaded files are stored safely outside web roots in:
+`infrastructure/storage/documents/` (or the path defined by `STORAGE_DIR`).
+Storage keys use sanitized, collision-free names: `doc_<timestamp>_<randomHex>.<ext>`.
+
+### Local Vector Embeddings (Ollama):
+
+MindVault standardizes on **768 dimensions** using `nomic-embed-text` (v1.5) with an 8192 token context window. This matches Google Gemini `text-embedding-004` (768 dimensions), allowing zero-migration multi-provider compatibility.
+
+1. **Install Ollama:** [https://ollama.com](https://ollama.com)
+2. **Pull the Embedding Model:**
+   ```bash
+   ollama pull nomic-embed-text
+   ```
+3. **Verify Ollama is Running:**
+   ```bash
+   curl http://127.0.0.1:11434/api/tags
+   ```
+4. **Environment Variables (`.env`):**
+   ```env
+   OLLAMA_BASE_URL="http://127.0.0.1:11434"
+   EMBEDDING_PROVIDER="ollama"
+   EMBEDDING_MODEL="nomic-embed-text"
+   EMBEDDING_DIMENSION="768"
+   STORAGE_DIR="./infrastructure/storage/documents"
+   ```
+
+_Note: In automated tests (`NODE_ENV=test`), `MockEmbeddingProvider` generates deterministic, L2 unit-normalized 768-dimensional vectors with zero external service dependencies._
+
+---
+
+## 9. Troubleshooting
 
 - **`pnpm` command not found**: Ensure npm global bin path is in your `PATH` environment variable (`%APPDATA%\npm` on Windows).
 - **Docker pipe error (`open //./pipe/dockerDesktopLinuxEngine`)**: Docker Desktop service is stopped. Launch Docker Desktop and wait for WSL2 initialization. In the meantime, all tests run instantaneously with the in-memory repository layer.
-- **`ERR_PNPM_IGNORED_BUILDS`**: Native dependencies (`argon2`, `prisma`, `esbuild`) are explicitly permitted via `allowBuilds` in `pnpm-workspace.yaml`.
+- **`ERR_PNPM_IGNORED_BUILDS`**: Native dependencies (`argon2`, `prisma`, `esbuild`, `msgpackr-extract`) are explicitly permitted via `allowBuilds` in `pnpm-workspace.yaml`.
 - **Port conflicts (4000 or 5173)**: Modify `PORT` in `.env` or adjust Vite's `server.port` in `apps/web/vite.config.ts`.

@@ -149,6 +149,17 @@ MindVault enforces strict workspace tenancy isolation and role-based access cont
 | `PATCH`  | `/api/workspaces/:id` | `ADMIN`       | Updates workspace configuration (e.g. name)            |
 | `DELETE` | `/api/workspaces/:id` | `OWNER`       | Deletes workspace and cascades tenant data             |
 
+### Document Management & Ingestion Endpoints (Phase 2)
+
+| Method   | Route                         | Minimum Role | Description                                                                |
+| -------- | ----------------------------- | ------------ | -------------------------------------------------------------------------- |
+| `POST`   | `/api/documents/upload`       | `MEMBER`     | Multipart upload (`.pdf`, `.docx`, `.txt`, `.md`), enqueues processing job |
+| `GET`    | `/api/documents`              | `MEMBER`     | Lists documents in workspace with pagination, search, and status filter    |
+| `GET`    | `/api/documents/:id`          | `MEMBER`     | Retrieves document metadata, page count, and chunk counts                  |
+| `GET`    | `/api/documents/:id/status`   | `MEMBER`     | Polls asynchronous ingestion status and active processing stage            |
+| `GET`    | `/api/documents/:id/download` | `MEMBER`     | Streams and downloads original file buffer with attachment headers         |
+| `DELETE` | `/api/documents/:id`          | `ADMIN`      | Cascades deletion of document, vector chunks, and physical storage file    |
+
 ---
 
 ## 7. Security Architecture
@@ -159,13 +170,14 @@ MindVault enforces strict workspace tenancy isolation and role-based access cont
 - **Cookie Security:** Refresh tokens are transmitted exclusively in `HttpOnly`, `SameSite=Strict` cookies. Access tokens stay in client memory.
 - **Token Reuse Detection:** Attempting to replay an already rotated refresh token triggers automatic family revocation, terminating all sessions for that account immediately.
 - **Tenant Isolation:** Every route handling tenant data requires `authorizeWorkspace(minimumRole)`, strictly preventing IDOR vulnerabilities across tenants.
+- **Storage & Magic Byte Defenses:** Files are stored outside web roots using cryptographically generated keys with strict path traversal defenses. Binary null byte inspection and file header validation prevent spoofed uploads.
 
 ---
 
 ## 8. Testing & Quality Checks
 
 ```bash
-# Run unit and integration tests (25 tests covering Auth, RBAC, IDOR, Health)
+# Run unit and integration tests (80 tests covering Auth, Workspace, Document API, Extractors, Chunker, Embeddings, Storage)
 pnpm test
 
 # Run strict TypeScript typecheck across all workspaces
@@ -183,8 +195,9 @@ pnpm format
 
 ---
 
-## 9. Current Status: Phase 1 Completed
+## 9. Current Status: Phase 2 Completed
 
 - [x] **Phase 0: Project Foundation** — Monorepo, Docker Compose, TypeScript Strict Mode, Express API, Worker, React Web, Centralized Error Handling.
 - [x] **Phase 1: Authentication & Workspace Management** — Prisma Schema & Migrations, Argon2id Auth, Session Lifecycle, Token Rotation & Reuse Detection, Workspace RBAC & Isolation, Full React Auth Shell.
-- [ ] **Phase 2: Ingestion Pipeline & Document Processing** (Next Milestone)
+- [x] **Phase 2: Document Ingestion Pipeline & Vector Knowledge Storage** — Multipart file upload, magic byte validation, SHA-256 deduplication, BullMQ async worker, multi-format extraction (PDF, DOCX, TXT, MD), Unicode NFC normalization, structure-aware chunking (700 target / 120 overlap), 768-dim vector embeddings (`nomic-embed-text` / pgvector), HNSW cosine index, Document Library frontend with live status polling.
+- [ ] **Phase 3: Retrieval Engine & Vector Search** (Next Milestone)

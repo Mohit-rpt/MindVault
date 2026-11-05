@@ -9,17 +9,19 @@ import {
   Key,
   CheckCircle2,
   Laptop,
+  ArrowRight,
 } from 'lucide-react';
 import type { ApiResponse, SessionDto, WorkspaceDto } from '@mindvault/shared';
+import { DocumentLibrary } from '../documents/DocumentLibrary';
 
 export const WorkspaceDashboard: React.FC = () => {
   const { activeWorkspace, accessToken, user, refreshWorkspaces, setActiveWorkspace } = useAuth();
   const [workspaceDetails, setWorkspaceDetails] = useState<WorkspaceDto | null>(null);
   const [sessions, setSessions] = useState<SessionDto[]>([]);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'members' | 'sessions' | 'settings'>(
-    'overview',
-  );
+  const [activeTab, setActiveTab] = useState<
+    'overview' | 'documents' | 'members' | 'sessions' | 'settings'
+  >('overview');
   const [editName, setEditName] = useState('');
   const [feedbackMessage, setFeedbackMessage] = useState<{
     text: string;
@@ -175,6 +177,17 @@ export const WorkspaceDashboard: React.FC = () => {
             Overview
           </button>
           <button
+            onClick={() => setActiveTab('documents')}
+            className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
+              activeTab === 'documents'
+                ? 'bg-vault-800 text-white'
+                : 'text-vault-400 hover:text-white hover:bg-vault-800/40'
+            }`}
+          >
+            <FileText className="w-3.5 h-3.5 text-blue-400" />
+            Knowledge Documents
+          </button>
+          <button
             onClick={() => setActiveTab('members')}
             className={`px-3 py-1.5 rounded-lg transition-colors ${
               activeTab === 'members'
@@ -232,19 +245,28 @@ export const WorkspaceDashboard: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="md:col-span-2 space-y-6">
             <div className="rounded-xl border border-vault-800 bg-vault-900/30 p-6 space-y-4">
-              <h3 className="text-base font-semibold text-white flex items-center gap-2">
-                <FileText className="w-4 h-4 text-blue-400" />
-                Knowledge Documents (Phase 2 Preview)
-              </h3>
-              <div className="p-8 border border-dashed border-vault-800 rounded-xl text-center space-y-2">
-                <p className="text-sm text-vault-300 font-medium">Document Ingestion Pipeline</p>
-                <p className="text-xs text-vault-500 max-w-sm mx-auto">
-                  PDF, Markdown, and TXT parsing with semantic chunking will be activated in Phase
-                  2.
-                </p>
-                <span className="inline-block px-2.5 py-1 text-[11px] font-mono text-vault-400 bg-vault-800 rounded border border-vault-700">
-                  Status: Scheduled for Phase 2
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-semibold text-white flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-blue-400" />
+                  Knowledge Documents
+                </h3>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                  Phase 2 Active
                 </span>
+              </div>
+              <p className="text-xs text-vault-400">
+                Upload PDFs, Markdown notes, Word files, and text documents. MindVault extracts,
+                normalizes, chunks, and generates 768-dimensional vector embeddings stored securely
+                in PostgreSQL with pgvector.
+              </p>
+              <div>
+                <button
+                  onClick={() => setActiveTab('documents')}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-medium shadow-sm transition-colors"
+                >
+                  Manage Knowledge Documents
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
               </div>
             </div>
 
@@ -295,6 +317,9 @@ export const WorkspaceDashboard: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Tab: Knowledge Documents */}
+      {activeTab === 'documents' && <DocumentLibrary />}
 
       {/* Tab 2: Members */}
       {activeTab === 'members' && (

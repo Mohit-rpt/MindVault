@@ -149,3 +149,131 @@ export interface WorkspaceDto {
   role?: WorkspaceRole;
   members?: WorkspaceMemberDto[];
 }
+
+// ---------------------------------------------------------------------------
+// Phase 2: Document Ingestion & Chunking Schemas & Contracts
+// ---------------------------------------------------------------------------
+
+export const DocumentStatusEnum = z.enum([
+  'UPLOADED',
+  'QUEUED',
+  'PROCESSING',
+  'COMPLETED',
+  'FAILED',
+  'DELETING',
+]);
+export type DocumentStatus = z.infer<typeof DocumentStatusEnum>;
+
+export interface DocumentDto {
+  id: string;
+  workspaceId: string;
+  uploadedById: string;
+  originalName: string;
+  mimeType: string;
+  extension: string;
+  sizeBytes: number;
+  checksum: string;
+  status: DocumentStatus;
+  errorMessage?: string | null;
+  pageCount?: number | null;
+  chunkCount: number;
+  embeddingModel?: string | null;
+  embeddingDimension?: number | null;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+  processedAt?: string | null;
+}
+
+export interface DocumentChunkDto {
+  id: string;
+  documentId: string;
+  workspaceId: string;
+  chunkIndex: number;
+  content: string;
+  tokenCount: number;
+  pageStart?: number | null;
+  pageEnd?: number | null;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface DocumentStatusDto {
+  id: string;
+  status: DocumentStatus;
+  processingStage?: string;
+  chunkCount: number;
+  pageCount?: number | null;
+  errorMessage?: string | null;
+  updatedAt: string;
+}
+
+export const DocumentListQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  status: DocumentStatusEnum.optional(),
+  search: z.string().trim().optional(),
+});
+export type DocumentListQuery = z.infer<typeof DocumentListQuerySchema>;
+
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+// Ingestion Pipeline Interfaces
+export interface DocumentStorageProvider {
+  save(storageKey: string, buffer: Buffer): Promise<void>;
+  read(storageKey: string): Promise<Buffer>;
+  delete(storageKey: string): Promise<void>;
+  exists(storageKey: string): Promise<boolean>;
+}
+
+export interface ExtractedPage {
+  pageNumber: number;
+  text: string;
+}
+
+export interface ExtractionResult {
+  extractedText: string;
+  pageCount?: number;
+  pages?: ExtractedPage[];
+  metadata?: Record<string, unknown>;
+  warnings?: string[];
+}
+
+export interface ChunkingOptions {
+  targetTokens?: number;
+  maxTokens?: number;
+  overlapTokens?: number;
+}
+
+export interface ChunkItem {
+  chunkIndex: number;
+  totalChunks?: number;
+  content: string;
+  tokenCount: number;
+  startChar?: number;
+  endChar?: number;
+  heading?: string;
+  section?: string;
+  pageStart?: number | null;
+  pageEnd?: number | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface EmbeddingProvider {
+  readonly modelName: string;
+  readonly dimension: number;
+  generateEmbedding(text: string): Promise<number[]>;
+  generateEmbeddings(texts: string[]): Promise<number[][]>;
+}
+
+export interface ProcessDocumentJobPayload {
+  documentId: string;
+  workspaceId: string;
+  userId: string;
+}

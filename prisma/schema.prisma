@@ -1,5 +1,6 @@
 // MindVault Prisma Schema — PostgreSQL + pgvector
 // Phase 1: Authentication & Workspace Management
+// Phase 2: Document Ingestion Pipeline & Vector Knowledge Storage
 
 generator client {
   provider = "prisma-client-js"
@@ -16,6 +17,15 @@ enum WorkspaceRole {
   MEMBER
 }
 
+enum DocumentStatus {
+  UPLOADED
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+  DELETING
+}
+
 model User {
   id           String            @id @default(uuid())
   name         String
@@ -26,6 +36,7 @@ model User {
 
   memberships  WorkspaceMember[]
   sessions     Session[]
+  documents    Document[]
 
   @@map("users")
 }
@@ -38,6 +49,8 @@ model Workspace {
   updatedAt DateTime          @updatedAt
 
   members   WorkspaceMember[]
+  documents Document[]
+  chunks    DocumentChunk[]
 
   @@map("workspaces")
 }
@@ -71,4 +84,57 @@ model Session {
   @@index([userId])
   @@index([refreshTokenHash])
   @@map("sessions")
+}
+
+model Document {
+  id                 String         @id @default(uuid())
+  workspaceId        String
+  uploadedById       String
+  originalName       String
+  mimeType           String
+  extension          String
+  sizeBytes          BigInt
+  checksum           String
+  storageKey         String
+  status             DocumentStatus @default(UPLOADED)
+  errorMessage       String?
+  pageCount          Int?
+  chunkCount         Int            @default(0)
+  embeddingModel     String?
+  embeddingDimension Int?
+  metadata           Json           @default("{}")
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  processedAt        DateTime?
+
+  workspace          Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  uploadedBy         User           @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  chunks             DocumentChunk[]
+
+  @@index([workspaceId])
+  @@index([status])
+  @@index([workspaceId, checksum])
+  @@map("documents")
+}
+
+model DocumentChunk {
+  id          String                      @id @default(uuid())
+  documentId  String
+  workspaceId String
+  chunkIndex  Int
+  content     String                      @db.Text
+  tokenCount  Int
+  pageStart   Int?
+  pageEnd     Int?
+  metadata    Json                        @default("{}")
+  embedding   Unsupported("vector(768)")?
+  createdAt   DateTime                    @default(now())
+
+  document    Document                    @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  workspace   Workspace                   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, chunkIndex])
+  @@index([workspaceId])
+  @@index([documentId])
+  @@map("document_chunks")
 }
