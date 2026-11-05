@@ -1,0 +1,12 @@
+{
+  "name": "@mindvault/config",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Shared configurations for MindVault monorepo",
+  "main": "index.js",
+  "files": [
+    "tsconfig.base.json",
+    "tsconfig.node.json",
+    "tsconfig.react.json"
+  ]
+}

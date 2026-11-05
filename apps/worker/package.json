@@ -1,0 +1,26 @@
+{
+  "name": "@mindvault/worker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MindVault Asynchronous Background Worker",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@mindvault/shared": "workspace:*",
+    "dotenv": "^16.4.7",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@mindvault/config": "workspace:*",
+    "@types/node": "^22.10.2",
+    "rimraf": "^6.0.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

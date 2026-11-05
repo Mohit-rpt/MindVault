@@ -1,0 +1,31 @@
+{
+  "name": "mindvault",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "MindVault — AI-Powered Personal Knowledge Operating System",
+  "packageManager": "pnpm@12.16.1",
+  "scripts": {
+    "dev:api": "pnpm --filter @mindvault/api dev",
+    "dev:worker": "pnpm --filter @mindvault/worker dev",
+    "dev:web": "pnpm --filter @mindvault/web dev",
+    "build": "pnpm --filter @mindvault/shared build && pnpm --filter @mindvault/api build && pnpm --filter @mindvault/worker build && pnpm --filter @mindvault/web build",
+    "typecheck": "pnpm --filter @mindvault/shared exec tsc --noEmit && pnpm --filter @mindvault/api exec tsc --noEmit && pnpm --filter @mindvault/worker exec tsc --noEmit && pnpm --filter @mindvault/web exec tsc --noEmit",
+    "lint": "eslint .",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md}\"",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
+    "test": "vitest run",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@types/node": "^22.10.2",
+    "eslint": "^9.17.0",
+    "globals": "^15.14.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.1",
+    "vitest": "^3.0.5"
+  }
+}
