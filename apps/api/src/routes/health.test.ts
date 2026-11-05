@@ -5,11 +5,11 @@ import { createApp } from '../app.js';
 describe('GET /api/health', () => {
   const app = createApp();
 
-  it('should return 200 OK with healthy status and process metadata', async () => {
+  it('should return 200 OK with process metadata and dependency status', async () => {
     const res = await request(app).get('/api/health');
 
     expect(res.status).toBe(200);
-    expect(res.body).toHaveProperty('status', 'healthy');
+    expect(['healthy', 'degraded']).toContain(res.body.status);
     expect(res.body).toHaveProperty('service', 'mindvault-api');
     expect(res.body).toHaveProperty('version', '1.0.0');
     expect(res.body).toHaveProperty('timestamp');

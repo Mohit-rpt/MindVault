@@ -22,6 +22,24 @@ const envSchema = z.object({
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
   DATABASE_URL: z.string().optional(),
   REDIS_URL: z.string().optional(),
+
+  // Phase 1: Authentication & Security
+  JWT_ACCESS_SECRET: z
+    .string()
+    .min(32, { message: 'JWT_ACCESS_SECRET must be at least 32 characters long' })
+    .default('dev_jwt_access_secret_replace_in_production_min_32_chars'),
+  JWT_ACCESS_EXPIRY: z.string().default('15m'),
+  COOKIE_SECRET: z
+    .string()
+    .min(32, { message: 'COOKIE_SECRET must be at least 32 characters long' })
+    .default('dev_cookie_signing_secret_replace_in_prod_min_32_chars'),
+  REFRESH_TOKEN_EXPIRY_DAYS: z
+    .string()
+    .default('7')
+    .transform((val) => parseInt(val, 10))
+    .refine((val) => !isNaN(val) && val > 0, {
+      message: 'REFRESH_TOKEN_EXPIRY_DAYS must be a positive integer',
+    }),
 });
 
 const parsed = envSchema.safeParse(process.env);

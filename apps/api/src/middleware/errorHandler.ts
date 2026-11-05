@@ -14,9 +14,9 @@ export function errorHandler(
   res: Response,
   _next: NextFunction,
 ): void {
-  const statusCode = err.statusCode || (err instanceof ZodError ? 400 : 500);
-  const errorCode =
-    err.code || (err instanceof ZodError ? 'VALIDATION_ERROR' : 'INTERNAL_SERVER_ERROR');
+  const isZod = err instanceof ZodError || err.name === 'ZodError';
+  const statusCode = err.statusCode || (isZod ? 400 : 500);
+  const errorCode = err.code || (isZod ? 'VALIDATION_ERROR' : 'INTERNAL_SERVER_ERROR');
   const message = err.message || 'An unexpected error occurred';
 
   console.error(`[ERROR] [${errorCode}] ${message}`, err.stack);
@@ -26,7 +26,7 @@ export function errorHandler(
     error: {
       code: errorCode,
       message,
-      ...(err instanceof ZodError && { details: err.errors }),
+      ...(isZod && { details: (err as unknown as ZodError).errors }),
       ...(env.NODE_ENV === 'development' && { stack: err.stack }),
     },
     meta: {

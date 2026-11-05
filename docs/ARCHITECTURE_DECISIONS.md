@@ -68,3 +68,37 @@ This document records the foundational architectural decisions made for MindVaul
 - **Status:** Accepted
 - **Context:** Chatbots frequently hallucinate or generate unverified claims. MindVault's product philosophy requires every answer to be traceable to verifiable evidence.
 - **Decision:** The foundational schema and response contracts mandate chunk-level provenance (`documentId`, `versionId`, `chunkId`, `pageNumber`, and `supportingText`). AI generation in Phase 4 must reference these exact source identities.
+
+---
+
+## ADR-007: Argon2id Password Hashing and Rotating Refresh Token Family Lifecycle
+
+- **Status:** Accepted
+- **Context:** Storing plaintext or weakly hashed passwords (MD5, SHA, plain bcrypt without memory hardness) leaves systems vulnerable to GPU cracking. Storing unhashed refresh tokens in databases leaves them vulnerable to token theft if database read access is compromised. Refresh tokens kept in browser `localStorage` are vulnerable to XSS exfiltration.
+- **Decision:**
+  - Hash all passwords using **Argon2id** (memory cost 64 MB, 3 iterations, 4 parallelism lanes).
+  - Issue short-lived JWT access tokens (15m expiry) kept exclusively in memory.
+  - Issue rotating refresh tokens stored in database strictly as **SHA-256 hashes**.
+  - Refresh tokens are transmitted exclusively in `HttpOnly`, `SameSite=Strict`, `Secure` cookies.
+  - Implement **Token Family Revocation upon Reuse**: When a refresh token is presented, the previous session is marked revoked and a new session is issued. If a client attempts to present an already revoked refresh token (replay attack), the system detects token reuse and immediately revokes all active sessions for that user family.
+- **Consequences:**
+  - High resistance against offline brute-force and GPU cracking.
+  - Zero exposure of refresh tokens to browser JavaScript (XSS mitigation).
+  - Immediate mitigation of compromised refresh token chains via family revocation.
+
+---
+
+## ADR-008: Workspace Tenancy Isolation & Role-Based Access Control (RBAC)
+
+- **Status:** Accepted
+- **Context:** Multi-tenant systems are vulnerable to Insecure Direct Object References (IDOR) if queries filter solely on record IDs without asserting tenant membership. MindVault requires strict data isolation between user workspaces.
+- **Decision:**
+  - Enforce explicit workspace membership verification via an `authorizeWorkspace(minimumRole)` middleware on every tenant-scoped endpoint.
+  - Implement a hierarchical 3-tier role system: `OWNER` (rank 3) > `ADMIN` (rank 2) > `MEMBER` (rank 1).
+  - Data queries in the repository layer and future vector search must filter on `workspaceId` as a mandatory compound key.
+  - Registration automatically creates an isolated primary workspace with the user as `OWNER`.
+  - Non-members attempting to access workspace resources receive generic `403 Forbidden` responses without leaking tenant existence.
+- **Consequences:**
+  - Complete multi-tenant isolation at both route middleware and database query layers.
+  - Elimination of cross-tenant IDOR attack vectors.
+  - Clear, extensible permission model for future multi-user collaboration.

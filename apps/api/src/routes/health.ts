@@ -1,10 +1,32 @@
 import { Router, Request, Response } from 'express';
 import { HealthCheckResponse } from '@mindvault/shared';
+import { prisma } from '../lib/prisma.js';
 
 export const healthRouter: Router = Router();
 
-healthRouter.get('/', (_req: Request, res: Response) => {
+healthRouter.get('/', async (_req: Request, res: Response) => {
   const memory = process.memoryUsage();
+
+  // Probe PostgreSQL if configured
+  let dbStatus: 'healthy' | 'unhealthy' | 'unknown' = 'unknown';
+  let dbLatencyMs: number | undefined;
+  let dbMessage = 'PostgreSQL check in progress';
+
+  try {
+    const dbStart = performance.now();
+    const queryPromise = prisma.$queryRaw`SELECT 1`;
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('PostgreSQL connection timeout (1000ms)')), 1000),
+    );
+
+    await Promise.race([queryPromise, timeoutPromise]);
+    dbLatencyMs = Math.round(performance.now() - dbStart);
+    dbStatus = 'healthy';
+    dbMessage = 'Connected to PostgreSQL';
+  } catch (err) {
+    dbStatus = 'unhealthy';
+    dbMessage = err instanceof Error ? err.message : 'Database connectivity check failed';
+  }
 
   const healthPayload: HealthCheckResponse & {
     process: {
@@ -17,7 +39,7 @@ healthRouter.get('/', (_req: Request, res: Response) => {
       };
     };
   } = {
-    status: 'healthy',
+    status: dbStatus === 'healthy' ? 'healthy' : 'degraded',
     service: 'mindvault-api',
     version: '1.0.0',
     timestamp: new Date().toISOString(),
@@ -33,8 +55,9 @@ healthRouter.get('/', (_req: Request, res: Response) => {
     },
     dependencies: {
       database: {
-        status: 'unknown',
-        message: 'PostgreSQL connection verification deferred to Phase 1 (schema initialization)',
+        status: dbStatus,
+        latencyMs: dbLatencyMs,
+        message: dbMessage,
       },
       redis: {
         status: 'unknown',

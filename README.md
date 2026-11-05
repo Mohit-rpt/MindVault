@@ -96,7 +96,17 @@ cp .env.example .env
 pnpm docker:up
 ```
 
-### Step 4: Run Development Services
+### Step 4: Run Database Migrations (Prisma)
+
+```bash
+# Generate Prisma Client:
+pnpm db:generate
+
+# Apply pending migrations:
+pnpm db:migrate
+```
+
+### Step 5: Run Development Services
 
 You can run services individually:
 
@@ -113,10 +123,49 @@ pnpm dev:web
 
 ---
 
-## 6. Testing & Quality Checks
+## 6. Authentication & Workspace API Endpoints (Phase 1)
+
+MindVault enforces strict workspace tenancy isolation and role-based access control (`OWNER` > `ADMIN` > `MEMBER`).
+
+### Authentication Endpoints
+
+| Method   | Route                    | Auth Required | Description                                                          |
+| -------- | ------------------------ | ------------- | -------------------------------------------------------------------- |
+| `POST`   | `/api/auth/register`     | No            | Registers user, creates initial workspace (`OWNER`), issues tokens   |
+| `POST`   | `/api/auth/login`        | No            | Validates credentials via Argon2id, creates session and sets cookies |
+| `POST`   | `/api/auth/refresh`      | Cookie        | Rotates refresh token, detects token reuse, issues fresh JWT         |
+| `POST`   | `/api/auth/logout`       | Cookie        | Revokes active session and clears auth cookies                       |
+| `GET`    | `/api/auth/me`           | Bearer        | Retrieves authenticated user profile and memberships                 |
+| `GET`    | `/api/auth/sessions`     | Bearer        | Lists all active and historical sessions for user                    |
+| `DELETE` | `/api/auth/sessions/:id` | Bearer        | Revokes a specific session by ID                                     |
+
+### Workspace Management Endpoints
+
+| Method   | Route                 | Minimum Role  | Description                                            |
+| -------- | --------------------- | ------------- | ------------------------------------------------------ |
+| `POST`   | `/api/workspaces`     | Authenticated | Creates a new workspace; creator designated as `OWNER` |
+| `GET`    | `/api/workspaces`     | Authenticated | Lists all workspaces the authenticated user belongs to |
+| `GET`    | `/api/workspaces/:id` | `MEMBER`      | Retrieves workspace details and member roster          |
+| `PATCH`  | `/api/workspaces/:id` | `ADMIN`       | Updates workspace configuration (e.g. name)            |
+| `DELETE` | `/api/workspaces/:id` | `OWNER`       | Deletes workspace and cascades tenant data             |
+
+---
+
+## 7. Security Architecture
+
+- **Password Hashing:** Argon2id with memory cost 64MB (65536 KB), 3 iterations, and 4 threads.
+- **Session Tokens:** Short-lived JWT access tokens (15m expiry) and rotating refresh tokens (7d expiry).
+- **Storage:** Refresh tokens are never stored in plaintext — only SHA-256 hashes are persisted in PostgreSQL.
+- **Cookie Security:** Refresh tokens are transmitted exclusively in `HttpOnly`, `SameSite=Strict` cookies. Access tokens stay in client memory.
+- **Token Reuse Detection:** Attempting to replay an already rotated refresh token triggers automatic family revocation, terminating all sessions for that account immediately.
+- **Tenant Isolation:** Every route handling tenant data requires `authorizeWorkspace(minimumRole)`, strictly preventing IDOR vulnerabilities across tenants.
+
+---
+
+## 8. Testing & Quality Checks
 
 ```bash
-# Run unit and integration tests
+# Run unit and integration tests (25 tests covering Auth, RBAC, IDOR, Health)
 pnpm test
 
 # Run strict TypeScript typecheck across all workspaces
@@ -134,8 +183,8 @@ pnpm format
 
 ---
 
-## 7. Current Status: Phase 0 Completed
+## 9. Current Status: Phase 1 Completed
 
-MindVault is currently in **Phase 0: Project Foundation**. All core skeletons, monorepo workspaces, strict TypeScript configurations, Docker Compose definitions, and health endpoints are verified and operational.
-
-Next Milestone: **Phase 1 — Authentication & Workspace Management**.
+- [x] **Phase 0: Project Foundation** — Monorepo, Docker Compose, TypeScript Strict Mode, Express API, Worker, React Web, Centralized Error Handling.
+- [x] **Phase 1: Authentication & Workspace Management** — Prisma Schema & Migrations, Argon2id Auth, Session Lifecycle, Token Rotation & Reuse Detection, Workspace RBAC & Isolation, Full React Auth Shell.
+- [ ] **Phase 2: Ingestion Pipeline & Document Processing** (Next Milestone)

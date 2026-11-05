@@ -1,9 +1,12 @@
 import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import { env } from './config/env.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { healthRouter } from './routes/health.js';
+import { authRouter } from './modules/auth/auth.routes.js';
+import { workspaceRouter } from './modules/workspace/workspace.routes.js';
 
 export function createApp(): Express {
   const app = express();
@@ -17,12 +20,17 @@ export function createApp(): Express {
   );
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true }));
+  app.use(cookieParser(env.COOKIE_SECRET));
 
   // Logging
   app.use(requestLogger);
 
-  // Routes
+  // Health probe
   app.use('/api/health', healthRouter);
+
+  // Authentication & Workspace management routes
+  app.use('/api/auth', authRouter);
+  app.use('/api/workspaces', workspaceRouter);
 
   // 404 Handler
   app.use((req: Request, res: Response) => {

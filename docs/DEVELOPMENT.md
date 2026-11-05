@@ -85,7 +85,37 @@ pnpm docker:down
 
 ---
 
-## 4. Running the Development Services
+---
+
+## 4. Database Migrations & Prisma
+
+MindVault uses Prisma ORM with PostgreSQL.
+
+### Generate Prisma Client:
+
+```bash
+pnpm db:generate
+```
+
+This generates `@prisma/client` typed models and enums based on `prisma/schema.prisma`.
+
+### Apply Migrations to PostgreSQL:
+
+When the PostgreSQL container is active (`pnpm docker:up`):
+
+```bash
+pnpm db:migrate
+```
+
+To create a new migration after editing `prisma/schema.prisma`:
+
+```bash
+pnpm db:migrate:dev --name your_migration_name
+```
+
+---
+
+## 5. Running the Development Services
 
 Run services in separate terminal windows or concurrently:
 
@@ -97,6 +127,8 @@ pnpm dev:api
 
 - Listens on `http://localhost:4000`
 - Health check available at `http://localhost:4000/api/health`
+- Auth routes mounted at `/api/auth`
+- Workspace routes mounted at `/api/workspaces`
 
 ### Background Worker (`apps/worker`)
 
@@ -114,16 +146,22 @@ pnpm dev:web
 
 - Available at `http://localhost:5173`
 - Proxies `/api` requests directly to `http://localhost:4000`
+- Provides authentication portal, workspace switcher, and tenant dashboard.
 
 ---
 
-## 5. Testing & Code Quality
+## 6. Testing & Code Quality
 
 ### Run Unit and Integration Tests:
 
 ```bash
 pnpm test
 ```
+
+MindVault features a dual-backend repository pattern (`IDatabaseService`):
+
+- `PrismaDatabaseService`: executes against live PostgreSQL.
+- `InMemoryDatabaseService`: runs fast, zero-flake, isolated integration tests in CI/local runs without requiring a live PostgreSQL instance.
 
 ### Run TypeScript Strict Typechecking:
 
@@ -137,16 +175,32 @@ pnpm typecheck
 pnpm lint
 ```
 
-### Format Code:
+### Check & Format Code:
 
 ```bash
+pnpm format:check
 pnpm format
 ```
 
 ---
 
-## 6. Troubleshooting
+## 7. Authentication Environment Configuration
+
+Ensure your `.env` contains the required Phase 1 cryptographic secrets:
+
+```env
+# JWT & Session Secrets
+JWT_ACCESS_SECRET="mindvault-dev-access-jwt-secret-key-32-chars-min"
+JWT_ACCESS_EXPIRY="15m"
+COOKIE_SECRET="mindvault-dev-cookie-secret-key-32-chars-min"
+REFRESH_TOKEN_EXPIRY_DAYS="7"
+```
+
+---
+
+## 8. Troubleshooting
 
 - **`pnpm` command not found**: Ensure npm global bin path is in your `PATH` environment variable (`%APPDATA%\npm` on Windows).
-- **Docker pipe error (`open //./pipe/dockerDesktopLinuxEngine`)**: Docker Desktop service is stopped. Launch Docker Desktop and wait for WSL2 initialization.
+- **Docker pipe error (`open //./pipe/dockerDesktopLinuxEngine`)**: Docker Desktop service is stopped. Launch Docker Desktop and wait for WSL2 initialization. In the meantime, all tests run instantaneously with the in-memory repository layer.
+- **`ERR_PNPM_IGNORED_BUILDS`**: Native dependencies (`argon2`, `prisma`, `esbuild`) are explicitly permitted via `allowBuilds` in `pnpm-workspace.yaml`.
 - **Port conflicts (4000 or 5173)**: Modify `PORT` in `.env` or adjust Vite's `server.port` in `apps/web/vite.config.ts`.
