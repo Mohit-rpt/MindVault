@@ -76,26 +76,26 @@ export const KnowledgeSearch: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header Banner */}
-      <div className="rounded-xl border border-vault-800 bg-vault-900/40 p-5 space-y-3">
+      <div className="rounded-2xl border border-theme-border bg-theme-surface p-5 space-y-3 shadow-xs">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-theme-accent/10 border border-theme-accent/20 flex items-center justify-center text-theme-accent">
               <Sparkles className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-base font-semibold text-white">Knowledge Search & Retrieval</h2>
-              <p className="text-xs text-vault-400">
+              <h2 className="text-base font-semibold text-theme-text">Knowledge Search & Retrieval</h2>
+              <p className="text-xs text-theme-text-muted">
                 Evidence-grounded hybrid search across indexed workspace documents
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
               <Database className="w-3 h-3" />
               <span>pgvector + FTS (RRF k=60)</span>
             </span>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
               <ShieldCheck className="w-3 h-3" />
               <span>Tenancy Isolated</span>
             </span>

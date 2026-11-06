@@ -231,13 +231,13 @@ export const DocumentLibrary: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         {/* Search Input */}
         <div className="relative flex-1 max-w-md">
-          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-vault-500" />
+          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-theme-text-muted" />
           <input
             type="text"
             placeholder="Search documents by filename..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-vault-950 border border-vault-800 rounded-xl text-xs text-white placeholder-vault-500 focus:outline-none focus:border-blue-500 transition-colors"
+            className="w-full pl-9 pr-4 py-2 bg-theme-surface border border-theme-border rounded-xl text-xs text-theme-text placeholder-theme-text-muted focus:outline-none focus:border-theme-accent/60 transition-colors shadow-subtle"
           />
         </div>
 
@@ -247,13 +247,13 @@ export const DocumentLibrary: React.FC = () => {
             onClick={() => fetchDocuments(false)}
             title="Refresh list"
             disabled={isRefreshing}
-            className="p-2 rounded-xl bg-vault-900 border border-vault-800 text-vault-400 hover:text-white hover:bg-vault-850 transition-colors"
+            className="p-2 rounded-xl bg-theme-surface border border-theme-border text-theme-text-muted hover:text-theme-text hover:bg-theme-surface-hover transition-colors shadow-subtle"
           >
-            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-blue-400' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-theme-accent' : ''}`} />
           </button>
           <button
             onClick={() => setShowUploader((prev) => !prev)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-medium shadow-sm transition-colors"
+            className="inline-flex items-center gap-2 px-3.5 py-2 bg-theme-accent hover:bg-theme-accent-hover text-white rounded-xl text-xs font-medium shadow-subtle transition-colors"
           >
             <UploadCloud className="w-4 h-4" />
             {showUploader ? 'Hide Uploader' : 'Upload Documents'}
@@ -275,15 +275,15 @@ export const DocumentLibrary: React.FC = () => {
       />
 
       {/* Filter Tabs */}
-      <div className="flex items-center gap-1 border-b border-vault-800/80 pb-3 text-xs font-medium overflow-x-auto">
+      <div className="flex items-center gap-1 border-b border-theme-border/60 pb-3 text-xs font-medium overflow-x-auto">
         {(['ALL', 'COMPLETED', 'PROCESSING', 'FAILED'] as const).map((st) => (
           <button
             key={st}
             onClick={() => setStatusFilter(st)}
             className={`px-3 py-1.5 rounded-lg transition-colors ${
               statusFilter === st
-                ? 'bg-vault-800 text-white font-semibold'
-                : 'text-vault-400 hover:text-white hover:bg-vault-800/50'
+                ? 'bg-theme-surface text-theme-text font-semibold shadow-subtle border border-theme-border'
+                : 'text-theme-text-secondary hover:text-theme-text hover:bg-theme-surface-hover'
             }`}
           >
             {st === 'ALL'

@@ -42,9 +42,11 @@ const envSchema = z.object({
     }),
 
   // Phase 4: Generative RAG & LLM Provider Configuration
-  LLM_PROVIDER: z.enum(['ollama', 'mock']).default('ollama'),
+  LLM_PROVIDER: z.enum(['ollama', 'gemini', 'mock']).default('ollama'),
   OLLAMA_BASE_URL: z.string().default('http://localhost:11434'),
   OLLAMA_GENERATION_MODEL: z.string().default('qwen3:0.6b'),
+  GEMINI_API_KEY: z.string().optional(),
+  GEMINI_MODEL: z.string().default('gemini-3.5-flash'),
   LLM_REQUEST_TIMEOUT: z
     .string()
     .default('60000')

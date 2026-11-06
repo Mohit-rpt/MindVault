@@ -17,6 +17,7 @@
     "evaluate:conversation": "tsx src/modules/conversations/evaluation/conversation.eval.runner.ts"
   },
   "dependencies": {
+    "@google/genai": "^2.32.0",
     "@mindvault/shared": "workspace:*",
     "@prisma/client": "^6.2.1",
     "argon2": "^0.41.1",

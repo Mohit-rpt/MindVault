@@ -70,6 +70,15 @@ export class ConversationRAGService {
       content: request.content,
       status: 'COMPLETED',
       tokenEstimate: ContextAssembler.estimateTokens(request.content),
+      metadata: request.image
+        ? {
+            image: {
+              mimeType: request.image.mimeType,
+              name: request.image.name || 'image',
+              data: request.image.data,
+            },
+          }
+        : {},
     });
 
     // 3. Create a pending ASSISTANT message in database
@@ -167,14 +176,15 @@ export class ConversationRAGService {
         summary: session.summary,
       });
 
-      // 9. Stream tokens from LLM Provider
-      const provider = LLMProviderFactory.getProvider();
+      // 9. Stream tokens from LLM Provider (dynamically selected: 'gemini' | 'ollama')
+      const provider = LLMProviderFactory.getProvider(request.provider);
       const genStart = performance.now();
 
       const stream = provider.generateStream(userPrompt, {
         systemPrompt,
         temperature: request.generation?.temperature ?? env.LLM_TEMPERATURE ?? 0.2,
         maxTokens: request.generation?.maxOutputTokens ?? env.LLM_MAX_OUTPUT_TOKENS ?? 512,
+        image: request.image,
       });
 
       for await (const chunk of stream) {
@@ -205,6 +215,8 @@ export class ConversationRAGService {
             grounding.referencedCitationIds.includes(s.citationId),
           ),
           metadata: {
+            provider: provider.providerName,
+            model: provider.modelName,
             grounding,
             contextualQuery: queryContext.contextualQuery,
             wasRewritten: queryContext.wasRewritten,

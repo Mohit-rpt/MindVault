@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import type { ChatMessageDto } from '@mindvault/shared';
 import { ChatMessage } from './ChatMessage';
-import { Bot, Sparkles, BookOpen, Compass } from 'lucide-react';
+import { Sparkles, FileText, Network, Compass, Lightbulb } from 'lucide-react';
 
 interface ChatTimelineProps {
   messages: ChatMessageDto[];
@@ -9,6 +9,7 @@ interface ChatTimelineProps {
   streamingAssistantId?: string;
   onCitationClick?: (citationId: string) => void;
   onRetry?: (content: string) => void;
+  onSelectPrompt?: (prompt: string) => void;
 }
 
 export const ChatTimeline: React.FC<ChatTimelineProps> = ({
@@ -17,6 +18,7 @@ export const ChatTimeline: React.FC<ChatTimelineProps> = ({
   streamingAssistantId,
   onCitationClick,
   onRetry,
+  onSelectPrompt,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -28,94 +30,102 @@ export const ChatTimeline: React.FC<ChatTimelineProps> = ({
     }
   }, [messages, isStreaming]);
 
+  // EMPTY STATE: Claude/ChatGPT style calm minimal welcome
   if (messages.length === 0) {
+    const suggestedPrompts = [
+      {
+        icon: FileText,
+        title: 'Summarize my documents',
+        description: 'Get a concise synthesis of uploaded PDFs and notes.',
+        prompt: 'Please provide a comprehensive executive summary of my uploaded documents.',
+      },
+      {
+        icon: Network,
+        title: 'Find connections',
+        description: 'Discover key relationships across your knowledge vault.',
+        prompt: 'What are the main interconnected themes across my uploaded knowledge base?',
+      },
+      {
+        icon: Lightbulb,
+        title: 'Explain a complex topic',
+        description: 'Break down intricate concepts with source citations.',
+        prompt: 'Explain the most complex concept in my uploaded files with step-by-step clarity.',
+      },
+      {
+        icon: Compass,
+        title: 'Vault overview',
+        description: 'What should I know about my uploaded files?',
+        prompt: 'What should I know about the files currently in my vault? What are the key takeaways?',
+      },
+    ];
+
     return (
-      <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-5 rounded-2xl border border-dashed border-vault-800 bg-vault-950/40">
-        <div className="w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center shadow-lg shadow-blue-500/5">
-          <Bot className="w-7 h-7" />
+      <div className="flex-1 flex flex-col items-center justify-center px-4 py-8 max-w-2xl mx-auto w-full text-center space-y-7 animate-fadeIn">
+        {/* Brand Mark */}
+        <div className="w-12 h-12 rounded-2xl bg-theme-surface-secondary border border-theme-border/80 flex items-center justify-center text-theme-accent shadow-subtle mx-auto">
+          <Sparkles className="w-6 h-6" />
         </div>
 
-        <div className="space-y-1.5 max-w-md">
-          <h3 className="text-base font-semibold text-white">MindVault Conversational Assistant</h3>
-          <p className="text-xs text-vault-400 leading-relaxed">
-            Ask questions, explore multi-turn follow-ups, and reference previous context. Every
-            answer is grounded in your uploaded documents with precise citation badges.
+        {/* Calm Heading */}
+        <div className="space-y-2">
+          <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-theme-text font-sans">
+            Your knowledge, connected.
+          </h2>
+          <p className="text-xs sm:text-sm text-theme-text-secondary max-w-md mx-auto leading-relaxed">
+            Ask questions, explore ideas, and discover insights grounded in your uploaded documents.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-lg pt-2 text-left">
-          <div className="p-3 rounded-xl bg-vault-900/50 border border-vault-800/80 space-y-1">
-            <div className="flex items-center gap-1.5 text-blue-400 text-xs font-medium">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Contextual</span>
-            </div>
-            <p className="text-[11px] text-vault-400">
-              Refers naturally to previous questions and concepts discussed earlier.
-            </p>
-          </div>
-
-          <div className="p-3 rounded-xl bg-vault-900/50 border border-vault-800/80 space-y-1">
-            <div className="flex items-center gap-1.5 text-emerald-400 text-xs font-medium">
-              <BookOpen className="w-3.5 h-3.5" />
-              <span>Grounded</span>
-            </div>
-            <p className="text-[11px] text-vault-400">
-              All claims are backed by [S1], [S2] source evidence from your vault.
-            </p>
-          </div>
-
-          <div className="p-3 rounded-xl bg-vault-900/50 border border-vault-800/80 space-y-1">
-            <div className="flex items-center gap-1.5 text-purple-400 text-xs font-medium">
-              <Compass className="w-3.5 h-3.5" />
-              <span>Persistent</span>
-            </div>
-            <p className="text-[11px] text-vault-400">
-              Conversations persist automatically and are isolated to this workspace.
-            </p>
-          </div>
+        {/* Suggestion Prompts Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full text-left pt-2">
+          {suggestedPrompts.map((item, idx) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => onSelectPrompt && onSelectPrompt(item.prompt)}
+                className="group flex flex-col justify-between p-3.5 rounded-xl border border-theme-border bg-theme-surface hover:bg-theme-surface-hover hover:border-theme-accent/40 transition-all text-left shadow-subtle"
+              >
+                <div className="flex items-center gap-2 mb-1.5 text-theme-accent">
+                  <Icon className="w-4 h-4 shrink-0" />
+                  <span className="text-xs font-medium text-theme-text group-hover:text-theme-accent transition-colors">
+                    {item.title}
+                  </span>
+                </div>
+                <p className="text-[11px] text-theme-text-muted leading-relaxed">
+                  {item.description}
+                </p>
+              </button>
+            );
+          })}
         </div>
       </div>
     );
   }
 
-  // Check if we should render a thinking skeleton when streaming but assistant message is not yet generated
-  const hasStreamingAssistantMessage = messages.some(
-    (m) => m.id === streamingAssistantId || m.status === 'STREAMING',
-  );
-
   return (
     <div
       ref={containerRef}
-      className="flex-1 overflow-y-auto space-y-4 p-4 pr-2 custom-scrollbar min-h-[300px]"
+      className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 custom-scrollbar"
     >
-      {messages.map((message) => {
-        const isThisStreaming =
-          isStreaming && (message.id === streamingAssistantId || message.status === 'STREAMING');
+      <div className="max-w-3xl mx-auto space-y-4">
+        {messages.map((message) => {
+          const isThisStreaming =
+            isStreaming && (message.id === streamingAssistantId || message.status === 'STREAMING');
 
-        return (
-          <ChatMessage
-            key={message.id}
-            message={message}
-            isStreaming={isThisStreaming}
-            onCitationClick={onCitationClick}
-            onRetry={onRetry}
-          />
-        );
-      })}
-
-      {isStreaming && !hasStreamingAssistantMessage && (
-        <div className="flex items-start gap-3">
-          <div className="w-7 h-7 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center justify-center shrink-0 animate-pulse">
-            <Bot className="w-4 h-4" />
-          </div>
-          <div className="rounded-2xl rounded-tl-none p-3 bg-vault-900/60 border border-vault-800 text-vault-400 text-xs flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-blue-400 animate-ping" />
-            <span>Retrieving workspace knowledge and synthesizing answer...</span>
-          </div>
-        </div>
-      )}
-
-      <div ref={bottomRef} />
+          return (
+            <ChatMessage
+              key={message.id}
+              message={message}
+              isStreaming={isThisStreaming}
+              onCitationClick={onCitationClick}
+              onRetry={onRetry}
+            />
+          );
+        })}
+        <div ref={bottomRef} className="h-4" />
+      </div>
     </div>
   );
 };

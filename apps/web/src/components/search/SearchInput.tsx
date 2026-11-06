@@ -25,7 +25,7 @@ export const SearchInput: React.FC<SearchInputProps> = ({
 
   return (
     <div className="relative flex items-center w-full">
-      <div className="absolute left-3.5 text-vault-500 pointer-events-none">
+      <div className="absolute left-3.5 text-theme-text-muted pointer-events-none">
         <Search className="w-4 h-4" />
       </div>
 
@@ -36,7 +36,7 @@ export const SearchInput: React.FC<SearchInputProps> = ({
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
         disabled={isLoading}
-        className="w-full pl-10 pr-24 py-3 rounded-xl bg-vault-900 border border-vault-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-sm text-white placeholder-vault-500 transition-all outline-none shadow-inner"
+        className="w-full pl-10 pr-24 py-3 rounded-xl bg-theme-surface-secondary border border-theme-border focus:border-theme-accent focus:ring-1 focus:ring-theme-accent text-sm text-theme-text placeholder-theme-text-muted transition-all outline-none"
       />
 
       <div className="absolute right-2 flex items-center gap-1.5">
@@ -44,7 +44,7 @@ export const SearchInput: React.FC<SearchInputProps> = ({
           <button
             type="button"
             onClick={() => onChange('')}
-            className="p-1 rounded-lg text-vault-500 hover:text-white hover:bg-vault-800 transition-colors"
+            className="p-1 rounded-lg text-theme-text-muted hover:text-theme-text hover:bg-theme-surface transition-colors"
           >
             <X className="w-3.5 h-3.5" />
           </button>
@@ -56,8 +56,8 @@ export const SearchInput: React.FC<SearchInputProps> = ({
           disabled={isLoading || !value.trim()}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
             isLoading || !value.trim()
-              ? 'bg-vault-800 text-vault-500 cursor-not-allowed'
-              : 'bg-blue-600 hover:bg-blue-500 text-white shadow-sm shadow-blue-500/20'
+              ? 'bg-theme-surface text-theme-text-muted cursor-not-allowed border border-theme-border'
+              : 'bg-theme-accent hover:opacity-90 text-white shadow-sm'
           }`}
         >
           {isLoading ? (

@@ -58,8 +58,8 @@ export const SearchModeSelector: React.FC<SearchModeSelectorProps> = ({
             title={item.description}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
               isSelected
-                ? `${item.accentColor} shadow-sm shadow-black/40`
-                : 'border-vault-800 bg-vault-900/60 text-vault-400 hover:text-white hover:border-vault-700'
+                ? `${item.accentColor} shadow-xs`
+                : 'border-theme-border bg-theme-surface text-theme-text-muted hover:text-theme-text hover:bg-theme-surface-secondary'
             } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
           >
             <Icon className="w-3.5 h-3.5" />

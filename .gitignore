@@ -26,6 +26,9 @@ pnpm-debug.log*
 
 # Database & Storage
 data/
+storage/
+infrastructure/storage/
+apps/api/infrastructure/storage/
 *.db
 *.sqlite
 *.sqlite3

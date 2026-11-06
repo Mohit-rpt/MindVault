@@ -21,12 +21,12 @@ export const DocumentDetails: React.FC<DocumentDetailsProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-2xl border border-vault-800 bg-vault-950 p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-150">
+      <div className="w-full max-w-lg rounded-2xl border border-theme-border bg-theme-surface p-6 shadow-2xl space-y-5 animate-in zoom-in-95 duration-150">
         <div className="flex items-start justify-between">
-          <div className="space-y-1 pr-6">
+          <div className="space-y-1.5 pr-6">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-mono uppercase bg-vault-800 px-2 py-0.5 rounded text-vault-300 border border-vault-700">
+              <span className="text-[10px] font-mono uppercase bg-theme-surface-secondary px-2 py-0.5 rounded text-theme-text-muted border border-theme-border font-medium">
                 {document.extension.replace('.', '')}
               </span>
               <ProcessingStatus
@@ -35,89 +35,89 @@ export const DocumentDetails: React.FC<DocumentDetailsProps> = ({
                 errorMessage={document.errorMessage}
               />
             </div>
-            <h3 className="text-base font-semibold text-white break-words">
+            <h3 className="text-base font-semibold text-theme-text break-words">
               {document.originalName}
             </h3>
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-vault-400 hover:text-white hover:bg-vault-800 transition-colors"
+            className="p-1.5 rounded-lg text-theme-text-muted hover:text-theme-text hover:bg-theme-surface-secondary transition-colors"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
         {document.errorMessage && (
-          <div className="p-3 rounded-xl border border-rose-500/20 bg-rose-500/10 text-xs text-rose-300 flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+          <div className="p-3 rounded-xl border border-rose-500/20 bg-rose-500/10 text-xs text-rose-600 dark:text-rose-400 flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
             <div>
-              <p className="font-semibold text-rose-200">Processing Error</p>
+              <p className="font-semibold">Processing Error</p>
               <p className="text-[11px] mt-0.5">{document.errorMessage}</p>
             </div>
           </div>
         )}
 
         <div className="grid grid-cols-2 gap-3 text-xs">
-          <div className="p-3 rounded-xl border border-vault-800/80 bg-vault-900/40 space-y-1">
-            <span className="text-vault-500 flex items-center gap-1.5 text-[11px]">
-              <Layers className="w-3.5 h-3.5 text-blue-400" />
+          <div className="p-3 rounded-xl border border-theme-border bg-theme-surface-secondary space-y-1">
+            <span className="text-theme-text-muted flex items-center gap-1.5 text-[11px]">
+              <Layers className="w-3.5 h-3.5 text-blue-500" />
               Chunks & Pages
             </span>
-            <p className="font-mono text-white text-sm font-semibold">
+            <p className="font-mono text-theme-text text-sm font-semibold">
               {document.chunkCount}{' '}
-              <span className="text-xs text-vault-400 font-normal">chunks</span>
+              <span className="text-xs text-theme-text-muted font-normal">chunks</span>
               {document.pageCount ? ` • ${document.pageCount} pgs` : ''}
             </p>
           </div>
 
-          <div className="p-3 rounded-xl border border-vault-800/80 bg-vault-900/40 space-y-1">
-            <span className="text-vault-500 flex items-center gap-1.5 text-[11px]">
-              <HardDrive className="w-3.5 h-3.5 text-emerald-400" />
+          <div className="p-3 rounded-xl border border-theme-border bg-theme-surface-secondary space-y-1">
+            <span className="text-theme-text-muted flex items-center gap-1.5 text-[11px]">
+              <HardDrive className="w-3.5 h-3.5 text-emerald-500" />
               File Size
             </span>
-            <p className="font-mono text-white text-sm font-semibold">
+            <p className="font-mono text-theme-text text-sm font-semibold">
               {formatSize(document.sizeBytes)}
             </p>
           </div>
 
-          <div className="p-3 rounded-xl border border-vault-800/80 bg-vault-900/40 space-y-1">
-            <span className="text-vault-500 flex items-center gap-1.5 text-[11px]">
-              <Cpu className="w-3.5 h-3.5 text-purple-400" />
+          <div className="p-3 rounded-xl border border-theme-border bg-theme-surface-secondary space-y-1">
+            <span className="text-theme-text-muted flex items-center gap-1.5 text-[11px]">
+              <Cpu className="w-3.5 h-3.5 text-purple-500" />
               Embedding Model
             </span>
-            <p className="font-mono text-white text-xs font-semibold truncate">
+            <p className="font-mono text-theme-text text-xs font-semibold truncate">
               {document.embeddingModel || 'None'}
             </p>
-            <p className="text-[10px] text-vault-500">
+            <p className="text-[10px] text-theme-text-muted">
               {document.embeddingDimension
                 ? `${document.embeddingDimension} dimensions`
                 : 'Pending'}
             </p>
           </div>
 
-          <div className="p-3 rounded-xl border border-vault-800/80 bg-vault-900/40 space-y-1">
-            <span className="text-vault-500 flex items-center gap-1.5 text-[11px]">
-              <Calendar className="w-3.5 h-3.5 text-amber-400" />
+          <div className="p-3 rounded-xl border border-theme-border bg-theme-surface-secondary space-y-1">
+            <span className="text-theme-text-muted flex items-center gap-1.5 text-[11px]">
+              <Calendar className="w-3.5 h-3.5 text-amber-500" />
               Uploaded
             </span>
-            <p className="text-white text-xs font-medium">
+            <p className="text-theme-text text-xs font-medium">
               {new Date(document.createdAt).toLocaleDateString()}
             </p>
-            <p className="text-[10px] text-vault-500">
+            <p className="text-[10px] text-theme-text-muted">
               {new Date(document.createdAt).toLocaleTimeString()}
             </p>
           </div>
         </div>
 
         {/* Security & Checksum */}
-        <div className="p-3 rounded-xl border border-vault-800/80 bg-vault-900/20 space-y-1.5 text-xs">
+        <div className="p-3 rounded-xl border border-theme-border bg-theme-surface-secondary space-y-1.5 text-xs">
           <div className="flex justify-between items-center text-[11px]">
-            <span className="text-vault-500 flex items-center gap-1.5">
-              <FileCode className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="text-theme-text-muted flex items-center gap-1.5">
+              <FileCode className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
               SHA-256 Checksum
             </span>
           </div>
-          <p className="font-mono text-[10px] text-vault-300 break-all select-all bg-vault-950 p-2 rounded-lg border border-vault-800">
+          <p className="font-mono text-[10px] text-theme-text-muted break-all select-all bg-theme-surface p-2 rounded-lg border border-theme-border">
             {document.checksum}
           </p>
         </div>
@@ -125,14 +125,14 @@ export const DocumentDetails: React.FC<DocumentDetailsProps> = ({
         <div className="flex justify-end gap-3 pt-2">
           <button
             onClick={() => onDownload(document.id, document.originalName)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-vault-800 hover:bg-vault-700 text-white rounded-lg text-xs font-medium transition-colors"
+            className="inline-flex items-center gap-2 px-3.5 py-2 bg-theme-accent hover:opacity-90 text-white rounded-xl text-xs font-medium transition-all shadow-sm"
           >
             <Download className="w-4 h-4" />
             Download Original
           </button>
           <button
             onClick={onClose}
-            className="px-4 py-2 bg-vault-900 hover:bg-vault-800 text-vault-300 rounded-lg text-xs font-medium transition-colors"
+            className="px-3.5 py-2 bg-theme-surface-secondary hover:bg-theme-border text-theme-text rounded-xl text-xs font-medium transition-colors border border-theme-border"
           >
             Close
           </button>

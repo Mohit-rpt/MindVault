@@ -500,6 +500,10 @@ export interface LLMGenerateOptions {
   timeoutMs?: number;
   systemPrompt?: string;
   stopSequences?: string[];
+  image?: {
+    mimeType: string;
+    data: string;
+  };
 }
 
 export interface LLMGenerateResult {
@@ -628,6 +632,15 @@ export const SendConversationMessageRequestSchema = z.object({
     .trim()
     .min(1, { message: 'Message content cannot be empty' })
     .max(4000, { message: 'Message content cannot exceed 4000 characters' }),
+  provider: z.enum(['ollama', 'gemini']).optional(),
+  model: z.string().optional(),
+  image: z
+    .object({
+      mimeType: z.string(),
+      data: z.string(),
+      name: z.string().optional(),
+    })
+    .optional(),
   retrieval: RAGRetrievalOptionsSchema.optional().default({}),
   generation: RAGGenerationOptionsSchema.optional().default({}),
 });

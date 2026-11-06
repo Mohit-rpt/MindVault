@@ -2,9 +2,27 @@ import type { Config } from 'tailwindcss';
 
 export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
+  darkMode: ['class', '[data-theme="graphite"]'],
   theme: {
     extend: {
       colors: {
+        theme: {
+          bg: 'var(--bg-app)',
+          sidebar: 'var(--bg-sidebar)',
+          surface: 'var(--bg-surface)',
+          'surface-secondary': 'var(--bg-surface-secondary)',
+          'surface-hover': 'var(--bg-surface-hover)',
+          text: 'var(--text-primary)',
+          'text-secondary': 'var(--text-secondary)',
+          'text-muted': 'var(--text-muted)',
+          border: 'var(--border-color)',
+          'border-subtle': 'var(--border-subtle)',
+          accent: 'var(--accent-color)',
+          'accent-hover': 'var(--accent-hover)',
+          'accent-light': 'var(--accent-light)',
+          user: 'var(--bg-user-bubble)',
+          code: 'var(--code-bg)',
+        },
         vault: {
           50: '#f8fafc',
           100: '#f1f5f9',
@@ -19,14 +37,19 @@ export default {
           950: '#020617',
         },
         brand: {
-          DEFAULT: '#3b82f6',
-          dark: '#1d4ed8',
-          accent: '#06b6d4',
+          DEFAULT: '#8B7860',
+          dark: '#786650',
+          accent: '#B8A68B',
         },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
-        mono: ['JetBrains Mono', 'monospace'],
+        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+      },
+      boxShadow: {
+        'subtle': '0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02)',
+        'composer': '0 4px 20px -2px rgba(0, 0, 0, 0.06), 0 2px 6px -1px rgba(0, 0, 0, 0.04)',
+        'modal': '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
       },
     },
   },

@@ -50,8 +50,8 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({
       onClick={() => fileInputRef.current?.click()}
       className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${
         isDragOver
-          ? 'border-blue-500 bg-blue-500/10 scale-[1.01]'
-          : 'border-vault-800 bg-vault-900/30 hover:border-vault-700 hover:bg-vault-900/50'
+          ? 'border-theme-accent bg-theme-accent/10 scale-[1.005]'
+          : 'border-theme-border bg-theme-surface hover:border-theme-accent/50 hover:bg-theme-surface-hover'
       } ${isUploading ? 'pointer-events-none opacity-60' : ''}`}
     >
       <input
@@ -63,15 +63,15 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({
         className="hidden"
       />
 
-      <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+      <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-theme-surface-secondary border border-theme-border/80 flex items-center justify-center text-theme-accent shadow-subtle">
         <UploadCloud className="w-6 h-6" />
       </div>
 
-      <h4 className="text-sm font-semibold text-white mb-1">
+      <h4 className="text-sm font-semibold text-theme-text mb-1">
         Click to upload or drag & drop files here
       </h4>
-      <p className="text-xs text-vault-400 max-w-sm mx-auto mb-4">
-        Supports PDF, Word (.docx), Markdown (.md), and plain text (.txt) up to 25 MB per file.
+      <p className="text-xs text-theme-text-muted max-w-sm mx-auto mb-4">
+        Supports PDF, Word (.docx), Markdown (.md), and plain text (.txt) up to 25 MB.
       </p>
 
       {/* Format tags */}
@@ -79,7 +79,7 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({
         {SUPPORTED_EXTENSIONS.map((ext) => (
           <span
             key={ext}
-            className="px-2 py-0.5 rounded text-[11px] font-mono bg-vault-850 text-vault-300 border border-vault-700"
+            className="px-2 py-0.5 rounded text-[11px] font-mono bg-theme-surface-secondary text-theme-text-secondary border border-theme-border"
           >
             {ext}
           </span>

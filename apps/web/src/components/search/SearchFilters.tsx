@@ -59,20 +59,20 @@ export const SearchFilters: React.FC<SearchFiltersProps> = ({
           onClick={onToggle}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
             isOpen || hasActiveFilters
-              ? 'bg-vault-800 text-white border-vault-700'
-              : 'bg-vault-900/60 text-vault-400 border-vault-800 hover:text-white hover:bg-vault-800/40'
+              ? 'bg-theme-surface-secondary text-theme-text border-theme-border font-medium'
+              : 'bg-theme-surface text-theme-text-muted border-theme-border hover:text-theme-text hover:bg-theme-surface-secondary'
           }`}
         >
-          <Filter className="w-3.5 h-3.5 text-vault-400" />
+          <Filter className="w-3.5 h-3.5 text-theme-text-muted" />
           <span>Filters & Configuration</span>
-          {hasActiveFilters && <span className="w-2 h-2 rounded-full bg-blue-400 ml-1" />}
+          {hasActiveFilters && <span className="w-2 h-2 rounded-full bg-theme-accent ml-1" />}
         </button>
 
         {hasActiveFilters && (
           <button
             type="button"
             onClick={handleReset}
-            className="text-xs text-vault-500 hover:text-vault-300 flex items-center gap-1"
+            className="text-xs text-theme-text-muted hover:text-theme-text flex items-center gap-1"
           >
             <X className="w-3 h-3" />
             <span>Reset filters</span>
@@ -81,11 +81,11 @@ export const SearchFilters: React.FC<SearchFiltersProps> = ({
       </div>
 
       {isOpen && (
-        <div className="p-4 rounded-xl border border-vault-800 bg-vault-900/40 space-y-4">
+        <div className="p-4 rounded-xl border border-theme-border bg-theme-surface space-y-4 shadow-xs">
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
             {/* File Types */}
             <div>
-              <label className="text-xs font-semibold text-vault-300 block mb-2">
+              <label className="text-xs font-semibold text-theme-text block mb-2">
                 File Extensions
               </label>
               <div className="flex flex-wrap gap-1.5">
@@ -98,8 +98,8 @@ export const SearchFilters: React.FC<SearchFiltersProps> = ({
                       onClick={() => toggleFileType(ext)}
                       className={`px-2 py-1 rounded text-xs font-mono uppercase transition-colors ${
                         active
-                          ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40 font-semibold'
-                          : 'bg-vault-800 text-vault-400 border border-vault-700 hover:text-white'
+                          ? 'bg-theme-accent/20 text-theme-text border border-theme-accent/40 font-semibold'
+                          : 'bg-theme-surface-secondary text-theme-text-muted border border-theme-border hover:text-theme-text'
                       }`}
                     >
                       {ext}
@@ -111,7 +111,7 @@ export const SearchFilters: React.FC<SearchFiltersProps> = ({
 
             {/* Page Range */}
             <div>
-              <label className="text-xs font-semibold text-vault-300 block mb-2">Page Range</label>
+              <label className="text-xs font-semibold text-theme-text block mb-2">Page Range</label>
               <div className="flex items-center gap-2">
                 <input
                   type="number"
@@ -124,9 +124,9 @@ export const SearchFilters: React.FC<SearchFiltersProps> = ({
                       pageStart: e.target.value ? parseInt(e.target.value, 10) : undefined,
                     })
                   }
-                  className="w-16 px-2 py-1 rounded bg-vault-950 border border-vault-700 text-xs text-white"
+                  className="w-16 px-2 py-1 rounded bg-theme-surface-secondary border border-theme-border text-xs text-theme-text outline-none"
                 />
-                <span className="text-vault-500 text-xs">to</span>
+                <span className="text-theme-text-muted text-xs">to</span>
                 <input
                   type="number"
                   min="1"
@@ -138,14 +138,14 @@ export const SearchFilters: React.FC<SearchFiltersProps> = ({
                       pageEnd: e.target.value ? parseInt(e.target.value, 10) : undefined,
                     })
                   }
-                  className="w-16 px-2 py-1 rounded bg-vault-950 border border-vault-700 text-xs text-white"
+                  className="w-16 px-2 py-1 rounded bg-theme-surface-secondary border border-theme-border text-xs text-theme-text outline-none"
                 />
               </div>
             </div>
 
             {/* Context Assembly */}
             <div>
-              <label className="text-xs font-semibold text-vault-300 block mb-2">
+              <label className="text-xs font-semibold text-theme-text block mb-2">
                 Context Token Budget
               </label>
               <div className="flex items-center gap-2">
@@ -161,9 +161,9 @@ export const SearchFilters: React.FC<SearchFiltersProps> = ({
                       maxContextTokens: parseInt(e.target.value, 10),
                     })
                   }
-                  className="w-full accent-blue-500"
+                  className="w-full accent-theme-accent"
                 />
-                <span className="text-xs font-mono text-vault-300 whitespace-nowrap">
+                <span className="text-xs font-mono text-theme-text-muted whitespace-nowrap">
                   {filters.maxContextTokens} tok
                 </span>
               </div>
@@ -171,22 +171,22 @@ export const SearchFilters: React.FC<SearchFiltersProps> = ({
 
             {/* Toggles */}
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-vault-300 block mb-1">Options</label>
-              <label className="flex items-center gap-2 text-xs text-vault-400 cursor-pointer">
+              <label className="text-xs font-semibold text-theme-text block mb-1">Options</label>
+              <label className="flex items-center gap-2 text-xs text-theme-text-muted cursor-pointer hover:text-theme-text">
                 <input
                   type="checkbox"
                   checked={filters.includeContext}
                   onChange={(e) => onChange({ ...filters, includeContext: e.target.checked })}
-                  className="rounded border-vault-700 bg-vault-950 text-blue-500 focus:ring-0"
+                  className="rounded border-theme-border bg-theme-surface-secondary text-theme-accent focus:ring-0"
                 />
                 <span>Include Assembled Context</span>
               </label>
-              <label className="flex items-center gap-2 text-xs text-vault-400 cursor-pointer">
+              <label className="flex items-center gap-2 text-xs text-theme-text-muted cursor-pointer hover:text-theme-text">
                 <input
                   type="checkbox"
                   checked={filters.enableReranking}
                   onChange={(e) => onChange({ ...filters, enableReranking: e.target.checked })}
-                  className="rounded border-vault-700 bg-vault-950 text-blue-500 focus:ring-0"
+                  className="rounded border-theme-border bg-theme-surface-secondary text-theme-accent focus:ring-0"
                 />
                 <span>Enable Reranking (Fallback if offline)</span>
               </label>

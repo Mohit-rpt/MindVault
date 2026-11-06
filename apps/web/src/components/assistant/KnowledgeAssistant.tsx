@@ -4,69 +4,55 @@ import type {
   ChatMessageDto,
   ContextSourceItem,
   GroundingValidationResult,
-  RetrievalMode,
 } from '@mindvault/shared';
 import { useAuth } from '../../context/AuthContext';
-import { ConversationSidebar } from './ConversationSidebar';
 import { ConversationHeader } from './ConversationHeader';
 import { ChatTimeline } from './ChatTimeline';
-import { ChatComposer } from './ChatComposer';
+import { ChatComposer, type ChatSendOptions } from './ChatComposer';
 import { SourcePanel } from './SourcePanel';
-import { Bookmark, PanelRightClose, PanelRightOpen, AlertCircle } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 
-interface KnowledgeAssistantProps {
+export interface KnowledgeAssistantProps {
   workspaceId: string;
+  sessions?: ChatSessionDto[];
+  activeSessionId?: string | null;
+  onSelectSession?: (sessionId: string) => void;
+  onNewSession?: () => void;
+  onRenameSession?: (sessionId: string, newTitle: string) => Promise<void>;
+  onArchiveSession?: (sessionId: string) => Promise<void>;
+  onDeleteSession?: (sessionId: string) => Promise<void>;
+  loadSessions?: () => Promise<void>;
+  onToggleSidebar?: () => void;
 }
 
-export const KnowledgeAssistant: React.FC<KnowledgeAssistantProps> = ({ workspaceId }) => {
+export const KnowledgeAssistant: React.FC<KnowledgeAssistantProps> = ({
+  workspaceId,
+  sessions = [],
+  activeSessionId = null,
+  onSelectSession = () => {},
+  onNewSession = () => {},
+  onRenameSession = async () => {},
+  onArchiveSession = async () => {},
+  onDeleteSession = async () => {},
+  loadSessions = async () => {},
+  onToggleSidebar,
+}) => {
   const { accessToken } = useAuth();
 
-  // State
-  const [sessions, setSessions] = useState<ChatSessionDto[]>([]);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessageDto[]>([]);
   const [sources, setSources] = useState<ContextSourceItem[]>([]);
   const [highlightedCitationId, setHighlightedCitationId] = useState<string | null>(null);
 
-  const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingAssistantId, setStreamingAssistantId] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
-  const [showSourcesPanel, setShowSourcesPanel] = useState(true);
+  const [showSourcesPanel, setShowSourcesPanel] = useState(false);
+  const [draftPrompt, setDraftPrompt] = useState<string>('');
 
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Fetch all sessions for active workspace
-  const loadSessions = useCallback(async () => {
-    setIsLoadingSessions(true);
-    try {
-      const response = await fetch('/api/conversations?limit=50', {
-        headers: {
-          'Content-Type': 'application/json',
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-          'X-Workspace-ID': workspaceId,
-        },
-      });
-
-      if (response.ok) {
-        const json = await response.json();
-        const loadedSessions: ChatSessionDto[] = json.data?.items || [];
-        setSessions(loadedSessions);
-
-        // Auto-select first session if none is selected
-        if (!activeSessionId && loadedSessions.length > 0) {
-          setActiveSessionId(loadedSessions[0].id);
-        }
-      }
-    } catch {
-      // Best-effort session loading
-    } finally {
-      setIsLoadingSessions(false);
-    }
-  }, [workspaceId, accessToken, activeSessionId]);
-
-  // Load messages whenever active session changes
+  // Load messages whenever activeSessionId changes
   const loadMessages = useCallback(
     async (sessionId: string) => {
       setIsLoadingMessages(true);
@@ -109,11 +95,6 @@ export const KnowledgeAssistant: React.FC<KnowledgeAssistantProps> = ({ workspac
     [workspaceId, accessToken],
   );
 
-  // Initial load
-  useEffect(() => {
-    loadSessions();
-  }, [workspaceId]);
-
   // Reload messages when activeSessionId changes
   useEffect(() => {
     if (activeSessionId) {
@@ -122,98 +103,7 @@ export const KnowledgeAssistant: React.FC<KnowledgeAssistantProps> = ({ workspac
       setMessages([]);
       setSources([]);
     }
-  }, [activeSessionId]);
-
-  // Session Handlers
-  const handleSelectSession = (sessionId: string) => {
-    if (isStreaming) {
-      handleStop();
-    }
-    setActiveSessionId(sessionId);
-  };
-
-  const handleNewSession = () => {
-    if (isStreaming) {
-      handleStop();
-    }
-    setActiveSessionId(null);
-    setMessages([]);
-    setSources([]);
-    setError(null);
-  };
-
-  const handleRenameSession = async (sessionId: string, newTitle: string) => {
-    try {
-      const response = await fetch(`/api/conversations/${sessionId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-          'X-Workspace-ID': workspaceId,
-        },
-        body: JSON.stringify({ title: newTitle }),
-      });
-
-      if (response.ok) {
-        const json = await response.json();
-        const updated: ChatSessionDto = json.data;
-        setSessions((prev) => prev.map((s) => (s.id === sessionId ? updated : s)));
-      }
-    } catch {
-      // Ignored
-    }
-  };
-
-  const handleArchiveSession = async (sessionId: string) => {
-    try {
-      const response = await fetch(`/api/conversations/${sessionId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-          'X-Workspace-ID': workspaceId,
-        },
-        body: JSON.stringify({ status: 'ARCHIVED' }),
-      });
-
-      if (response.ok) {
-        setSessions((prev) =>
-          prev.map((s) => (s.id === sessionId ? { ...s, status: 'ARCHIVED' } : s)),
-        );
-      }
-    } catch {
-      // Ignored
-    }
-  };
-
-  const handleDeleteSession = async (sessionId: string) => {
-    try {
-      const response = await fetch(`/api/conversations/${sessionId}`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-          'X-Workspace-ID': workspaceId,
-        },
-      });
-
-      if (response.ok) {
-        const remaining = sessions.filter((s) => s.id !== sessionId);
-        setSessions(remaining);
-        if (activeSessionId === sessionId) {
-          if (remaining.length > 0) {
-            setActiveSessionId(remaining[0].id);
-          } else {
-            setActiveSessionId(null);
-            setMessages([]);
-            setSources([]);
-          }
-        }
-      }
-    } catch {
-      // Ignored
-    }
-  };
+  }, [activeSessionId, loadMessages]);
 
   const handleCitationClick = (citationId: string) => {
     setShowSourcesPanel(true);
@@ -244,10 +134,7 @@ export const KnowledgeAssistant: React.FC<KnowledgeAssistantProps> = ({ workspac
   };
 
   // Main streaming conversation dispatcher
-  const handleSend = async (
-    userQuery: string,
-    options: { mode: RetrievalMode; topK: number; temperature: number },
-  ) => {
+  const handleSend = async (userQuery: string, options: ChatSendOptions) => {
     setError(null);
     setHighlightedCitationId(null);
 
@@ -276,8 +163,8 @@ export const KnowledgeAssistant: React.FC<KnowledgeAssistantProps> = ({ workspac
         const createdJson = await createRes.json();
         const newSession: ChatSessionDto = createdJson.data;
         currentSessionId = newSession.id;
-        setActiveSessionId(currentSessionId);
-        setSessions((prev) => [newSession, ...prev]);
+        onSelectSession(currentSessionId);
+        await loadSessions();
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Could not initialize conversation.';
         setError(msg);
@@ -298,7 +185,15 @@ export const KnowledgeAssistant: React.FC<KnowledgeAssistantProps> = ({ workspac
       status: 'COMPLETED',
       sequenceNumber: messages.length + 1,
       citations: [],
-      metadata: {},
+      metadata: options.image
+        ? {
+            image: {
+              mimeType: options.image.mimeType,
+              data: options.image.data,
+              name: options.image.name,
+            },
+          }
+        : {},
       tokenEstimate: 0,
       createdAt: new Date().toISOString(),
       completedAt: new Date().toISOString(),
@@ -313,7 +208,9 @@ export const KnowledgeAssistant: React.FC<KnowledgeAssistantProps> = ({ workspac
       status: 'STREAMING',
       sequenceNumber: messages.length + 2,
       citations: [],
-      metadata: {},
+      metadata: {
+        provider: options.provider,
+      },
       tokenEstimate: 0,
       createdAt: new Date().toISOString(),
       completedAt: null,
@@ -337,6 +234,8 @@ export const KnowledgeAssistant: React.FC<KnowledgeAssistantProps> = ({ workspac
         },
         body: JSON.stringify({
           content: userQuery,
+          provider: options.provider,
+          image: options.image,
           retrieval: {
             mode: options.mode,
             topK: options.topK,
@@ -392,11 +291,10 @@ export const KnowledgeAssistant: React.FC<KnowledgeAssistantProps> = ({ workspac
 
             switch (eventType) {
               case 'start': {
-                realAssistantId = data.messageId || realAssistantId;
+                realAssistantId = data.assistantMessageId || data.messageId || realAssistantId;
                 realUserMessageId = data.userMessageId || realUserMessageId;
                 setStreamingAssistantId(realAssistantId);
 
-                // Reconcile temporary IDs with server-assigned IDs
                 setMessages((prev) =>
                   prev.map((m) => {
                     if (m.id === tempUserMessageId) {
@@ -454,38 +352,26 @@ export const KnowledgeAssistant: React.FC<KnowledgeAssistantProps> = ({ workspac
                 break;
               }
 
-              case 'summary_updated': {
-                if (data.summary && currentSessionId) {
-                  setSessions((prev) =>
-                    prev.map((s) =>
-                      s.id === currentSessionId
-                        ? {
-                            ...s,
-                            summary: data.summary,
-                            summaryVersion: data.summaryVersion || s.summaryVersion + 1,
-                          }
-                        : s,
-                    ),
-                  );
-                }
-                break;
-              }
-
               case 'done': {
                 setMessages((prev) =>
                   prev.map((m) =>
                     m.id === realAssistantId || m.id === tempAssistantMessageId
                       ? {
                           ...m,
+                          ...(data.message ? data.message : {}),
                           status: 'COMPLETED',
-                          citations: data.citations || m.citations,
-                          tokenEstimate: data.totalTokens || m.tokenEstimate,
+                          metadata: {
+                            ...(m.metadata || {}),
+                            ...(data.message?.metadata || {}),
+                          },
+                          citations: data.citations || data.message?.citations || m.citations,
+                          tokenEstimate:
+                            data.totalTokens || data.message?.tokenEstimate || m.tokenEstimate,
                           completedAt: new Date().toISOString(),
                         }
                       : m,
                   ),
                 );
-                // Refresh sessions to sync message count and lastMessageAt
                 loadSessions();
                 break;
               }
@@ -503,7 +389,7 @@ export const KnowledgeAssistant: React.FC<KnowledgeAssistantProps> = ({ workspac
               }
             }
           } catch {
-            // Partial JSON chunk ignored
+            // Partial JSON ignored
           }
         }
       }
@@ -520,15 +406,6 @@ export const KnowledgeAssistant: React.FC<KnowledgeAssistantProps> = ({ workspac
               : m,
           ),
         );
-      } else {
-        // Cancelled by client
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === tempAssistantMessageId || m.status === 'STREAMING'
-              ? { ...m, status: 'CANCELLED' }
-              : m,
-          ),
-        );
       }
     } finally {
       setIsStreaming(false);
@@ -540,99 +417,85 @@ export const KnowledgeAssistant: React.FC<KnowledgeAssistantProps> = ({ workspac
   const activeSession = sessions.find((s) => s.id === activeSessionId) || null;
 
   return (
-    <div className="flex flex-col lg:flex-row gap-5 h-[calc(100vh-140px)] min-h-[640px]">
-      {/* Left Column: Conversations Sidebar */}
-      <ConversationSidebar
-        sessions={sessions}
-        activeSessionId={activeSessionId}
-        onSelectSession={handleSelectSession}
-        onNewSession={handleNewSession}
-        onRenameSession={handleRenameSession}
-        onArchiveSession={handleArchiveSession}
-        onDeleteSession={handleDeleteSession}
-        isLoading={isLoadingSessions}
+    <div className="flex-1 flex flex-col h-full min-w-0 bg-theme-bg overflow-hidden relative">
+      {/* Minimal Header */}
+      <ConversationHeader
+        session={activeSession}
+        onRename={(newTitle) => activeSessionId && onRenameSession(activeSessionId, newTitle)}
+        onArchive={() => activeSessionId && onArchiveSession(activeSessionId)}
+        onDelete={() => activeSessionId && onDeleteSession(activeSessionId)}
+        onToggleSidebar={onToggleSidebar}
+        evidenceCount={sources.length}
+        onToggleEvidence={() => setShowSourcesPanel(!showSourcesPanel)}
+        isEvidenceOpen={showSourcesPanel}
       />
 
-      {/* Center Column: Main Chat Interface */}
-      <div className="flex-1 flex flex-col h-full rounded-2xl border border-vault-800 bg-vault-950/60 overflow-hidden">
-        {/* Header Bar */}
-        <div className="border-b border-vault-800">
-          <ConversationHeader
-            session={activeSession}
-            onRename={(newTitle) =>
-              activeSessionId && handleRenameSession(activeSessionId, newTitle)
-            }
-            onArchive={() => activeSessionId && handleArchiveSession(activeSessionId)}
-            onDelete={() => activeSessionId && handleDeleteSession(activeSessionId)}
-          />
-        </div>
-
-        {/* Global Error Banner */}
-        {error && (
-          <div className="mx-4 mt-3 p-3 rounded-xl border border-rose-500/20 bg-rose-500/10 text-xs text-rose-300 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-              <span>{error}</span>
-            </div>
-            <button
-              onClick={() => setError(null)}
-              className="text-xs text-rose-400 hover:text-white"
-            >
-              Dismiss
-            </button>
+      {/* Global Error Banner */}
+      {error && (
+        <div className="mx-4 mt-3 max-w-3xl sm:mx-auto w-full p-3 rounded-xl border border-rose-500/20 bg-rose-500/10 text-xs text-rose-700 dark:text-rose-300 flex items-center justify-between gap-2 shadow-subtle">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+            <span>{error}</span>
           </div>
+          <button
+            onClick={() => setError(null)}
+            className="text-xs font-semibold text-rose-600 dark:text-rose-400 hover:underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Main Messages Timeline (Centered, comfortable measure) */}
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        {isLoadingMessages ? (
+          <div className="flex-1 flex items-center justify-center text-xs text-theme-text-muted">
+            Loading conversation history...
+          </div>
+        ) : (
+          <ChatTimeline
+            messages={messages}
+            isStreaming={isStreaming}
+            streamingAssistantId={streamingAssistantId}
+            onCitationClick={handleCitationClick}
+            onRetry={(content) =>
+              handleSend(content, {
+                mode: 'hybrid',
+                topK: 5,
+                temperature: 0.2,
+                provider: 'gemini',
+              })
+            }
+            onSelectPrompt={(prompt) => {
+              handleSend(prompt, {
+                mode: 'hybrid',
+                topK: 5,
+                temperature: 0.2,
+                provider: 'gemini',
+              });
+            }}
+          />
         )}
-
-        {/* Chat Timeline (Scrollable Messages Area) */}
-        <div className="flex-1 flex flex-col min-h-0 relative">
-          {isLoadingMessages ? (
-            <div className="flex-1 flex items-center justify-center text-xs text-vault-500">
-              Loading conversation history...
-            </div>
-          ) : (
-            <ChatTimeline
-              messages={messages}
-              isStreaming={isStreaming}
-              streamingAssistantId={streamingAssistantId}
-              onCitationClick={handleCitationClick}
-              onRetry={(content) =>
-                handleSend(content, { mode: 'hybrid', topK: 5, temperature: 0.2 })
-              }
-            />
-          )}
-
-          {/* Toggle Evidence Drawer Button (if sources exist) */}
-          {sources.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setShowSourcesPanel((prev) => !prev)}
-              className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-vault-900/90 border border-vault-700 text-vault-300 text-xs hover:text-white hover:border-vault-600 transition-all shadow-md z-10"
-              title={showSourcesPanel ? 'Hide Evidence Sources' : 'Show Evidence Sources'}
-            >
-              <Bookmark className="w-3.5 h-3.5 text-blue-400" />
-              <span>Evidence ({sources.length})</span>
-              {showSourcesPanel ? (
-                <PanelRightClose className="w-3.5 h-3.5 text-vault-400" />
-              ) : (
-                <PanelRightOpen className="w-3.5 h-3.5 text-vault-400" />
-              )}
-            </button>
-          )}
-        </div>
-
-        {/* Bottom Composer */}
-        <div className="border-t border-vault-800 p-4 bg-vault-950/80">
-          <ChatComposer onSend={handleSend} onStop={handleStop} isStreaming={isStreaming} />
-        </div>
       </div>
 
-      {/* Right Column: Evidence Drawer (collapsible) */}
+      {/* Floating Bottom Composer */}
+      <div className="p-3 sm:pb-6 bg-gradient-to-t from-theme-bg via-theme-bg to-transparent">
+        <ChatComposer
+          onSend={handleSend}
+          onStop={handleStop}
+          isStreaming={isStreaming}
+          draftPrompt={draftPrompt}
+        />
+      </div>
+
+      {/* Slide-Over Evidence Drawer */}
       {showSourcesPanel && sources.length > 0 && (
-        <div className="w-full lg:w-80 flex flex-col h-full rounded-2xl border border-vault-800 bg-vault-950/80 p-3 overflow-y-auto custom-scrollbar">
+        <div className="fixed inset-y-0 right-0 z-40 w-full sm:w-96 bg-theme-surface border-l border-theme-border shadow-modal p-4 animate-slideIn flex flex-col">
           <SourcePanel
             sources={sources}
             highlightedCitationId={highlightedCitationId}
             onCitationClick={handleCitationClick}
+            onClose={() => setShowSourcesPanel(false)}
           />
         </div>
       )}
