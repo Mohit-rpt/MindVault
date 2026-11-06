@@ -37,6 +37,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
     if (!trimmed || isStreaming || disabled) return;
 
     onSend(trimmed, { mode, topK, temperature });
+    setQuery('');
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

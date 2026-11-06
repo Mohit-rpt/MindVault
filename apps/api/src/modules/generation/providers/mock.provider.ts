@@ -68,6 +68,27 @@ export class MockLLMProvider implements LLMProvider {
 
     // Inspect prompt to generate an honest grounded response
     const lowerPrompt = prompt.toLowerCase();
+
+    // Handle summarization prompts
+    if (
+      lowerPrompt.includes('conversation summarizer') ||
+      lowerPrompt.includes('generate a concise, neutral summary')
+    ) {
+      return 'The user asked about neural networks, machine learning paradigms, and follow-up architectural questions.';
+    }
+
+    // Handle query reformulation prompts
+    if (lowerPrompt.includes('reformulate the latest question')) {
+      if (lowerPrompt.includes('limitations')) {
+        return 'limitations of neural network architecture';
+      }
+      if (lowerPrompt.includes('example')) {
+        return 'real-world example of supervised learning';
+      }
+      const match = prompt.match(/User Question:\s*([^\n]+)/i);
+      return match ? match[1].trim() : 'contextualized search query';
+    }
+
     const hasEvidence = prompt.includes('--- SOURCE [S1]');
     const isInsufficient =
       lowerPrompt.includes('unsupported') ||

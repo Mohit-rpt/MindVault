@@ -13,7 +13,8 @@
     "db:generate": "prisma generate --schema=../../prisma/schema.prisma",
     "db:migrate": "prisma migrate dev --schema=../../prisma/schema.prisma",
     "evaluate": "tsx src/modules/retrieval/evaluation/eval.runner.ts",
-    "evaluate:rag": "tsx src/modules/generation/evaluation/rag.eval.runner.ts"
+    "evaluate:rag": "tsx src/modules/generation/evaluation/rag.eval.runner.ts",
+    "evaluate:conversation": "tsx src/modules/conversations/evaluation/conversation.eval.runner.ts"
   },
   "dependencies": {
     "@mindvault/shared": "workspace:*",

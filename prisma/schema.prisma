@@ -37,6 +37,7 @@ model User {
   memberships  WorkspaceMember[]
   sessions     Session[]
   documents    Document[]
+  chatSessions ChatSession[]
 
   @@map("users")
 }
@@ -48,9 +49,11 @@ model Workspace {
   createdAt DateTime          @default(now())
   updatedAt DateTime          @updatedAt
 
-  members   WorkspaceMember[]
-  documents Document[]
-  chunks    DocumentChunk[]
+  members      WorkspaceMember[]
+  documents    Document[]
+  chunks       DocumentChunk[]
+  chatSessions ChatSession[]
+  chatMessages ChatMessage[]
 
   @@map("workspaces")
 }
@@ -139,3 +142,76 @@ model DocumentChunk {
   @@index([documentId])
   @@map("document_chunks")
 }
+
+// Phase 5: Conversational RAG & Persistent Chat Sessions
+
+enum ChatSessionStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum ChatMessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+enum ChatMessageStatus {
+  PENDING
+  STREAMING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+model ChatSession {
+  id                   String            @id @default(uuid())
+  workspaceId          String
+  userId               String
+  title                String
+  status               ChatSessionStatus @default(ACTIVE)
+  summary              String?           @db.Text
+  summaryVersion       Int               @default(0)
+  summarizedThroughSeq Int               @default(0)
+  summaryUpdatedAt     DateTime?
+  messageCount         Int               @default(0)
+  lastMessageAt        DateTime          @default(now())
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  archivedAt           DateTime?
+
+  workspace            Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages             ChatMessage[]
+
+  @@index([workspaceId])
+  @@index([userId])
+  @@index([workspaceId, userId])
+  @@index([workspaceId, lastMessageAt])
+  @@map("chat_sessions")
+}
+
+model ChatMessage {
+  id             String            @id @default(uuid())
+  sessionId      String
+  workspaceId    String
+  role           ChatMessageRole
+  content        String            @db.Text
+  status         ChatMessageStatus @default(PENDING)
+  sequenceNumber Int
+  citations      Json              @default("[]")
+  metadata       Json              @default("{}")
+  tokenEstimate  Int               @default(0)
+  createdAt      DateTime          @default(now())
+  completedAt    DateTime?
+
+  session        ChatSession       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  workspace      Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, sequenceNumber])
+  @@index([sessionId])
+  @@index([workspaceId])
+  @@index([sessionId, createdAt])
+  @@map("chat_messages")
+}
+

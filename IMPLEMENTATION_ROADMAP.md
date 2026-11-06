@@ -95,13 +95,15 @@ This roadmap defines the sequential development phases of **MindVault**, from in
 - Offline Benchmark Harness: Deterministic 10-case evaluation suite (`pnpm rag:evaluate`) validating citation accuracy (100%), insufficient evidence detection (100%), and prompt injection containment (100%).
 - 160 automated unit, integration, and security tests passing across all packages.
 
-### Phase 5: Conversational RAG, Chat Sessions & Memory
+### Phase 5: Conversational RAG, Persistent Chat Sessions & Conversation Memory (Completed)
 
-- PostgreSQL Full-Text Search (tsvector/tsquery) integration.
-- Reciprocal Rank Fusion (RRF) for hybrid keyword + vector retrieval.
-- Query rewriting and expansion.
-- Cross-encoder reranking pass.
-- Retrieval benchmark dataset and evaluation harness.
+- Multi-tenant Persistent Chat Sessions: `ChatSession` and `ChatMessage` models in PostgreSQL/Prisma with cascade deletion and strict sequence uniqueness (`UNIQUE(session_id, sequence_number)`).
+- Dual-Tier Bounded Conversational Memory: Sliding window of recent dialogue turns ($k = 6\text{--}10$) combined with asynchronous, bounded rolling memory summaries ($\le 120$ words) updated on message thresholds.
+- Contextual Query Understanding: Resolves conversational pronouns (`it`, `they`), demonstratives (`that technique`), and elliptical follow-ups (`And what about its drawbacks?`) while preserving standalone queries and topic shifts (`QueryContextService`).
+- Conversational Prompt Architecture: Explicit structural isolation between untrusted dialogue history/summaries and authoritative retrieved document evidence, preventing models from citing past chat turns as source facts (`ConversationalPromptBuilder`).
+- SSE Streaming Lifecycle & Disconnect Resilience: Real-time token streaming with client abort handling, preventing orphaned `STREAMING` records and cleanly transitioning to `CANCELLED` (`ConversationRAGService`).
+- Complete Conversational UI: React components in `apps/web/src/components/assistant/` with `ConversationSidebar`, `ConversationHeader`, `ChatTimeline`, `ChatMessage` with clickable `[S1]` badges, and interactive `SourcePanel`.
+- 12-Scenario Benchmark & Full Test Coverage: Dedicated evaluation runner (`pnpm conversation:evaluate`) passing 12/12 scenarios (100%), and 183 automated unit/integration tests passing across 24 test suites.
 
 ### Phase 6: Knowledge Graph
 

@@ -10,6 +10,7 @@ import { workspaceRouter } from './modules/workspace/workspace.routes.js';
 import { documentRouter } from './modules/document/document.routes.js';
 import { retrievalRoutes } from './modules/retrieval/retrieval.routes.js';
 import { createGenerationRouter } from './modules/generation/generation.routes.js';
+import { createConversationRouter } from './modules/conversations/conversation.routes.js';
 
 export function createApp(): Express {
   const app = express();
@@ -37,6 +38,7 @@ export function createApp(): Express {
   app.use('/api/documents', documentRouter);
   app.use('/api/retrieval', retrievalRoutes);
   app.use('/api/rag', createGenerationRouter());
+  app.use('/api/conversations', createConversationRouter());
 
   // 404 Handler
   app.use((req: Request, res: Response) => {

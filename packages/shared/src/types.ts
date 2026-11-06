@@ -543,3 +543,125 @@ export type RAGStreamEvent =
       metadata: { totalMs: number; generationDurationMs: number };
     }
   | { type: 'error'; message: string; code?: string };
+
+// ==========================================
+// Phase 5: Conversational RAG & Memory Types
+// ==========================================
+
+export const ChatSessionStatusEnum = z.enum(['ACTIVE', 'ARCHIVED']);
+export type ChatSessionStatus = z.infer<typeof ChatSessionStatusEnum>;
+
+export const ChatMessageRoleEnum = z.enum(['USER', 'ASSISTANT', 'SYSTEM']);
+export type ChatMessageRole = z.infer<typeof ChatMessageRoleEnum>;
+
+export const ChatMessageStatusEnum = z.enum([
+  'PENDING',
+  'STREAMING',
+  'COMPLETED',
+  'FAILED',
+  'CANCELLED',
+]);
+export type ChatMessageStatus = z.infer<typeof ChatMessageStatusEnum>;
+
+export interface ChatSessionDto {
+  id: string;
+  workspaceId: string;
+  userId: string;
+  title: string;
+  status: ChatSessionStatus;
+  summary: string | null;
+  summaryVersion: number;
+  summarizedThroughSeq: number;
+  summaryUpdatedAt: string | null;
+  messageCount: number;
+  lastMessageAt: string;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt: string | null;
+}
+
+export interface ChatMessageDto {
+  id: string;
+  sessionId: string;
+  workspaceId: string;
+  role: ChatMessageRole;
+  content: string;
+  status: ChatMessageStatus;
+  sequenceNumber: number;
+  citations: ContextSourceItem[];
+  metadata: Record<string, unknown>;
+  tokenEstimate: number;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export const CreateConversationRequestSchema = z.object({
+  title: z.string().trim().min(1).max(200).optional(),
+  initialMessage: z.string().trim().min(1).max(4000).optional(),
+});
+export type CreateConversationRequest = z.infer<typeof CreateConversationRequestSchema>;
+
+export const UpdateConversationRequestSchema = z.object({
+  title: z.string().trim().min(1).max(200).optional(),
+  status: ChatSessionStatusEnum.optional(),
+});
+export type UpdateConversationRequest = z.infer<typeof UpdateConversationRequestSchema>;
+
+export const ListConversationsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  cursor: z.string().optional(),
+  search: z.string().trim().optional(),
+  status: ChatSessionStatusEnum.optional().default('ACTIVE'),
+});
+export type ListConversationsQuery = z.infer<typeof ListConversationsQuerySchema>;
+
+export const GetMessagesQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  beforeSequence: z.coerce.number().int().optional(),
+  afterSequence: z.coerce.number().int().optional(),
+});
+export type GetMessagesQuery = z.infer<typeof GetMessagesQuerySchema>;
+
+export const SendConversationMessageRequestSchema = z.object({
+  content: z
+    .string()
+    .trim()
+    .min(1, { message: 'Message content cannot be empty' })
+    .max(4000, { message: 'Message content cannot exceed 4000 characters' }),
+  retrieval: RAGRetrievalOptionsSchema.optional().default({}),
+  generation: RAGGenerationOptionsSchema.optional().default({}),
+});
+export type SendConversationMessageRequest = z.infer<typeof SendConversationMessageRequestSchema>;
+export type SendConversationMessageRequestInput = z.input<
+  typeof SendConversationMessageRequestSchema
+>;
+
+export type ConversationStreamEvent =
+  | {
+      type: 'start';
+      sessionId: string;
+      userMessageId: string;
+      assistantMessageId: string;
+      sequenceNumber: number;
+    }
+  | {
+      type: 'user_message';
+      message: ChatMessageDto;
+    }
+  | {
+      type: 'retrieval_complete';
+      totalSources: number;
+      retrievalMode: RetrievalMode;
+      contextualQuery?: string;
+      timings: { retrievalMs: number; contextualizationMs?: number };
+    }
+  | { type: 'sources'; sources: ContextSourceItem[] }
+  | { type: 'token'; text: string }
+  | { type: 'validation'; grounding: GroundingValidationResult }
+  | {
+      type: 'done';
+      message: ChatMessageDto;
+      finishReason: string;
+      metadata?: Record<string, unknown>;
+    }
+  | { type: 'error'; message: string; code?: string };

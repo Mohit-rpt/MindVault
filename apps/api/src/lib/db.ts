@@ -1,5 +1,11 @@
 import { prisma } from './prisma.js';
-import { WorkspaceRole, DocumentStatus } from '@mindvault/shared';
+import {
+  WorkspaceRole,
+  DocumentStatus,
+  ChatSessionStatus,
+  ChatMessageRole,
+  ChatMessageStatus,
+} from '@mindvault/shared';
 
 export interface UserRecord {
   id: string;
@@ -93,6 +99,38 @@ export interface SearchChunkResult {
   };
   score: number;
   distance?: number;
+}
+
+export interface ChatSessionRecord {
+  id: string;
+  workspaceId: string;
+  userId: string;
+  title: string;
+  status: ChatSessionStatus;
+  summary: string | null;
+  summaryVersion: number;
+  summarizedThroughSeq: number;
+  summaryUpdatedAt: Date | null;
+  messageCount: number;
+  lastMessageAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  archivedAt: Date | null;
+}
+
+export interface ChatMessageRecord {
+  id: string;
+  sessionId: string;
+  workspaceId: string;
+  role: ChatMessageRole;
+  content: string;
+  status: ChatMessageStatus;
+  sequenceNumber: number;
+  citations: any;
+  metadata: any;
+  tokenEstimate: number;
+  createdAt: Date;
+  completedAt: Date | null;
 }
 
 export interface IDatabaseService {
@@ -214,6 +252,80 @@ export interface IDatabaseService {
       pageEnd?: number;
     },
   ): Promise<SearchChunkResult[]>;
+
+  // Conversation operations (Phase 5)
+  createChatSession(data: {
+    id?: string;
+    workspaceId: string;
+    userId: string;
+    title?: string;
+  }): Promise<ChatSessionRecord>;
+  findChatSessionById(id: string, workspaceId: string): Promise<ChatSessionRecord | null>;
+  listChatSessions(params: {
+    workspaceId: string;
+    userId: string;
+    limit?: number;
+    cursor?: string;
+    search?: string;
+    status?: ChatSessionStatus;
+  }): Promise<ChatSessionRecord[]>;
+  updateChatSession(
+    id: string,
+    workspaceId: string,
+    data: {
+      title?: string;
+      status?: ChatSessionStatus;
+      summary?: string | null;
+      summaryVersion?: number;
+      summarizedThroughSeq?: number;
+      summaryUpdatedAt?: Date | null;
+      messageCount?: number;
+      lastMessageAt?: Date;
+      archivedAt?: Date | null;
+    },
+  ): Promise<ChatSessionRecord>;
+  deleteChatSession(id: string, workspaceId: string): Promise<void>;
+
+  createChatMessage(data: {
+    id?: string;
+    sessionId: string;
+    workspaceId: string;
+    role: ChatMessageRole;
+    content: string;
+    status?: ChatMessageStatus;
+    sequenceNumber?: number;
+    citations?: any;
+    metadata?: any;
+    tokenEstimate?: number;
+  }): Promise<ChatMessageRecord>;
+  findChatMessageById(id: string, sessionId: string): Promise<ChatMessageRecord | null>;
+  updateChatMessage(
+    id: string,
+    sessionId: string,
+    data: {
+      content?: string;
+      status?: ChatMessageStatus;
+      citations?: any;
+      metadata?: any;
+      tokenEstimate?: number;
+      completedAt?: Date | null;
+    },
+  ): Promise<ChatMessageRecord>;
+  listChatMessages(
+    sessionId: string,
+    workspaceId: string,
+    params?: {
+      limit?: number;
+      beforeSequence?: number;
+      afterSequence?: number;
+    },
+  ): Promise<ChatMessageRecord[]>;
+  getNextMessageSequence(sessionId: string): Promise<number>;
+  getRecentMessagesForContext(
+    sessionId: string,
+    workspaceId: string,
+    limit?: number,
+  ): Promise<ChatMessageRecord[]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -763,6 +875,199 @@ export class PrismaDatabaseService implements IDatabaseService {
       return [];
     }
   }
+
+  // Conversation operations (Phase 5)
+  async createChatSession(data: {
+    id?: string;
+    workspaceId: string;
+    userId: string;
+    title?: string;
+  }): Promise<ChatSessionRecord> {
+    return prisma.chatSession.create({
+      data: {
+        id: data.id,
+        workspaceId: data.workspaceId,
+        userId: data.userId,
+        title: data.title || 'New Conversation',
+      },
+    }) as unknown as Promise<ChatSessionRecord>;
+  }
+
+  async findChatSessionById(id: string, workspaceId: string): Promise<ChatSessionRecord | null> {
+    return prisma.chatSession.findFirst({
+      where: { id, workspaceId },
+    }) as unknown as Promise<ChatSessionRecord | null>;
+  }
+
+  async listChatSessions(params: {
+    workspaceId: string;
+    userId: string;
+    limit?: number;
+    cursor?: string;
+    search?: string;
+    status?: ChatSessionStatus;
+  }): Promise<ChatSessionRecord[]> {
+    const where: any = {
+      workspaceId: params.workspaceId,
+      userId: params.userId,
+      ...(params.status ? { status: params.status } : {}),
+      ...(params.search ? { title: { contains: params.search, mode: 'insensitive' } } : {}),
+    };
+
+    return prisma.chatSession.findMany({
+      where,
+      orderBy: { lastMessageAt: 'desc' },
+      take: params.limit || 20,
+      ...(params.cursor ? { skip: 1, cursor: { id: params.cursor } } : {}),
+    }) as unknown as Promise<ChatSessionRecord[]>;
+  }
+
+  async updateChatSession(
+    id: string,
+    workspaceId: string,
+    data: {
+      title?: string;
+      status?: ChatSessionStatus;
+      summary?: string | null;
+      summaryVersion?: number;
+      summarizedThroughSeq?: number;
+      summaryUpdatedAt?: Date | null;
+      messageCount?: number;
+      lastMessageAt?: Date;
+      archivedAt?: Date | null;
+    },
+  ): Promise<ChatSessionRecord> {
+    return prisma.chatSession.update({
+      where: { id },
+      data: {
+        ...data,
+        updatedAt: new Date(),
+      },
+    }) as unknown as Promise<ChatSessionRecord>;
+  }
+
+  async deleteChatSession(id: string, workspaceId: string): Promise<void> {
+    await prisma.chatSession.deleteMany({
+      where: { id, workspaceId },
+    });
+  }
+
+  async createChatMessage(data: {
+    id?: string;
+    sessionId: string;
+    workspaceId: string;
+    role: ChatMessageRole;
+    content: string;
+    status?: ChatMessageStatus;
+    sequenceNumber?: number;
+    citations?: any;
+    metadata?: any;
+    tokenEstimate?: number;
+  }): Promise<ChatMessageRecord> {
+    const seq =
+      data.sequenceNumber !== undefined
+        ? data.sequenceNumber
+        : await this.getNextMessageSequence(data.sessionId);
+    const msg = await prisma.chatMessage.create({
+      data: {
+        id: data.id,
+        sessionId: data.sessionId,
+        workspaceId: data.workspaceId,
+        role: data.role,
+        content: data.content,
+        status: data.status || 'PENDING',
+        sequenceNumber: seq,
+        citations: data.citations || [],
+        metadata: data.metadata || {},
+        tokenEstimate: data.tokenEstimate || 0,
+      },
+    });
+
+    await prisma.chatSession
+      .update({
+        where: { id: data.sessionId },
+        data: {
+          messageCount: { increment: 1 },
+          lastMessageAt: msg.createdAt,
+        },
+      })
+      .catch(() => {});
+
+    return msg as unknown as ChatMessageRecord;
+  }
+
+  async findChatMessageById(id: string, sessionId: string): Promise<ChatMessageRecord | null> {
+    return prisma.chatMessage.findFirst({
+      where: { id, sessionId },
+    }) as unknown as Promise<ChatMessageRecord | null>;
+  }
+
+  async updateChatMessage(
+    id: string,
+    sessionId: string,
+    data: {
+      content?: string;
+      status?: ChatMessageStatus;
+      citations?: any;
+      metadata?: any;
+      tokenEstimate?: number;
+      completedAt?: Date | null;
+    },
+  ): Promise<ChatMessageRecord> {
+    return prisma.chatMessage.update({
+      where: { id },
+      data,
+    }) as unknown as Promise<ChatMessageRecord>;
+  }
+
+  async listChatMessages(
+    sessionId: string,
+    workspaceId: string,
+    params?: {
+      limit?: number;
+      beforeSequence?: number;
+      afterSequence?: number;
+    },
+  ): Promise<ChatMessageRecord[]> {
+    const where: any = { sessionId, workspaceId };
+    if (params?.beforeSequence !== undefined) {
+      where.sequenceNumber = { lt: params.beforeSequence };
+    } else if (params?.afterSequence !== undefined) {
+      where.sequenceNumber = { gt: params.afterSequence };
+    }
+
+    return prisma.chatMessage.findMany({
+      where,
+      orderBy: { sequenceNumber: 'asc' },
+      take: params?.limit || 50,
+    }) as unknown as Promise<ChatMessageRecord[]>;
+  }
+
+  async getNextMessageSequence(sessionId: string): Promise<number> {
+    const last = await prisma.chatMessage.findFirst({
+      where: { sessionId },
+      orderBy: { sequenceNumber: 'desc' },
+      select: { sequenceNumber: true },
+    });
+    return (last?.sequenceNumber ?? 0) + 1;
+  }
+
+  async getRecentMessagesForContext(
+    sessionId: string,
+    workspaceId: string,
+    limit: number = 10,
+  ): Promise<ChatMessageRecord[]> {
+    const messages = await prisma.chatMessage.findMany({
+      where: {
+        sessionId,
+        workspaceId,
+        status: 'COMPLETED',
+      },
+      orderBy: { sequenceNumber: 'desc' },
+      take: limit,
+    });
+    return (messages as unknown as ChatMessageRecord[]).reverse();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -775,6 +1080,8 @@ export class InMemoryDatabaseService implements IDatabaseService {
   public sessions: Map<string, SessionRecord> = new Map();
   public documents: Map<string, DocumentRecord> = new Map();
   public chunks: Map<string, DocumentChunkRecord> = new Map();
+  public chatSessions: Map<string, ChatSessionRecord> = new Map();
+  public chatMessages: Map<string, ChatMessageRecord> = new Map();
 
   async createUser(data: {
     name: string;
@@ -1359,6 +1666,227 @@ export class InMemoryDatabaseService implements IDatabaseService {
     return results.sort((a, b) => b.score - a.score).slice(0, topK);
   }
 
+  // Conversation operations (Phase 5)
+  async createChatSession(data: {
+    id?: string;
+    workspaceId: string;
+    userId: string;
+    title?: string;
+  }): Promise<ChatSessionRecord> {
+    const session: ChatSessionRecord = {
+      id: data.id || `session_${Math.random().toString(36).slice(2, 11)}`,
+      workspaceId: data.workspaceId,
+      userId: data.userId,
+      title: data.title || 'New Conversation',
+      status: 'ACTIVE',
+      summary: null,
+      summaryVersion: 0,
+      summarizedThroughSeq: 0,
+      summaryUpdatedAt: null,
+      messageCount: 0,
+      lastMessageAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      archivedAt: null,
+    };
+    this.chatSessions.set(session.id, session);
+    return session;
+  }
+
+  async findChatSessionById(id: string, workspaceId: string): Promise<ChatSessionRecord | null> {
+    const session = this.chatSessions.get(id);
+    if (!session || session.workspaceId !== workspaceId) return null;
+    return session;
+  }
+
+  async listChatSessions(params: {
+    workspaceId: string;
+    userId: string;
+    limit?: number;
+    cursor?: string;
+    search?: string;
+    status?: ChatSessionStatus;
+  }): Promise<ChatSessionRecord[]> {
+    let sessions = Array.from(this.chatSessions.values()).filter((s) => {
+      if (s.workspaceId !== params.workspaceId || s.userId !== params.userId) return false;
+      if (params.status && s.status !== params.status) return false;
+      if (params.search && !s.title.toLowerCase().includes(params.search.toLowerCase()))
+        return false;
+      return true;
+    });
+
+    sessions.sort((a, b) => b.lastMessageAt.getTime() - a.lastMessageAt.getTime());
+
+    if (params.cursor) {
+      const idx = sessions.findIndex((s) => s.id === params.cursor);
+      if (idx !== -1) {
+        sessions = sessions.slice(idx + 1);
+      }
+    }
+
+    return sessions.slice(0, params.limit || 20);
+  }
+
+  async updateChatSession(
+    id: string,
+    workspaceId: string,
+    data: {
+      title?: string;
+      status?: ChatSessionStatus;
+      summary?: string | null;
+      summaryVersion?: number;
+      summarizedThroughSeq?: number;
+      summaryUpdatedAt?: Date | null;
+      messageCount?: number;
+      lastMessageAt?: Date;
+      archivedAt?: Date | null;
+    },
+  ): Promise<ChatSessionRecord> {
+    const session = await this.findChatSessionById(id, workspaceId);
+    if (!session) throw new Error('Chat session not found');
+
+    const updated: ChatSessionRecord = {
+      ...session,
+      ...data,
+      updatedAt: new Date(),
+    };
+    this.chatSessions.set(id, updated);
+    return updated;
+  }
+
+  async deleteChatSession(id: string, workspaceId: string): Promise<void> {
+    const session = await this.findChatSessionById(id, workspaceId);
+    if (!session) return;
+
+    this.chatSessions.delete(id);
+    for (const [msgId, msg] of this.chatMessages.entries()) {
+      if (msg.sessionId === id) {
+        this.chatMessages.delete(msgId);
+      }
+    }
+  }
+
+  async createChatMessage(data: {
+    id?: string;
+    sessionId: string;
+    workspaceId: string;
+    role: ChatMessageRole;
+    content: string;
+    status?: ChatMessageStatus;
+    sequenceNumber?: number;
+    citations?: any;
+    metadata?: any;
+    tokenEstimate?: number;
+  }): Promise<ChatMessageRecord> {
+    const seq =
+      data.sequenceNumber !== undefined
+        ? data.sequenceNumber
+        : await this.getNextMessageSequence(data.sessionId);
+
+    const message: ChatMessageRecord = {
+      id: data.id || `msg_${Math.random().toString(36).slice(2, 11)}`,
+      sessionId: data.sessionId,
+      workspaceId: data.workspaceId,
+      role: data.role,
+      content: data.content,
+      status: data.status || 'PENDING',
+      sequenceNumber: seq,
+      citations: data.citations || [],
+      metadata: data.metadata || {},
+      tokenEstimate: data.tokenEstimate || 0,
+      createdAt: new Date(),
+      completedAt: null,
+    };
+    this.chatMessages.set(message.id, message);
+
+    const session = this.chatSessions.get(data.sessionId);
+    if (session) {
+      session.messageCount += 1;
+      session.lastMessageAt = message.createdAt;
+      session.updatedAt = message.createdAt;
+    }
+
+    return message;
+  }
+
+  async findChatMessageById(id: string, sessionId: string): Promise<ChatMessageRecord | null> {
+    const msg = this.chatMessages.get(id);
+    if (!msg || msg.sessionId !== sessionId) return null;
+    return msg;
+  }
+
+  async updateChatMessage(
+    id: string,
+    sessionId: string,
+    data: {
+      content?: string;
+      status?: ChatMessageStatus;
+      citations?: any;
+      metadata?: any;
+      tokenEstimate?: number;
+      completedAt?: Date | null;
+    },
+  ): Promise<ChatMessageRecord> {
+    const msg = await this.findChatMessageById(id, sessionId);
+    if (!msg) throw new Error('Chat message not found');
+
+    const updated: ChatMessageRecord = {
+      ...msg,
+      ...data,
+    };
+    this.chatMessages.set(id, updated);
+    return updated;
+  }
+
+  async listChatMessages(
+    sessionId: string,
+    workspaceId: string,
+    params?: {
+      limit?: number;
+      beforeSequence?: number;
+      afterSequence?: number;
+    },
+  ): Promise<ChatMessageRecord[]> {
+    let messages = Array.from(this.chatMessages.values()).filter(
+      (m) => m.sessionId === sessionId && m.workspaceId === workspaceId,
+    );
+
+    if (params?.beforeSequence !== undefined) {
+      messages = messages.filter((m) => m.sequenceNumber < params.beforeSequence!);
+    } else if (params?.afterSequence !== undefined) {
+      messages = messages.filter((m) => m.sequenceNumber > params.afterSequence!);
+    }
+
+    messages.sort((a, b) => a.sequenceNumber - b.sequenceNumber);
+    return messages.slice(0, params?.limit || 50);
+  }
+
+  async getNextMessageSequence(sessionId: string): Promise<number> {
+    let maxSeq = 0;
+    for (const msg of this.chatMessages.values()) {
+      if (msg.sessionId === sessionId && msg.sequenceNumber > maxSeq) {
+        maxSeq = msg.sequenceNumber;
+      }
+    }
+    return maxSeq + 1;
+  }
+
+  async getRecentMessagesForContext(
+    sessionId: string,
+    workspaceId: string,
+    limit: number = 10,
+  ): Promise<ChatMessageRecord[]> {
+    const completed = Array.from(this.chatMessages.values())
+      .filter(
+        (m) =>
+          m.sessionId === sessionId && m.workspaceId === workspaceId && m.status === 'COMPLETED',
+      )
+      .sort((a, b) => b.sequenceNumber - a.sequenceNumber)
+      .slice(0, limit);
+
+    return completed.reverse();
+  }
+
   clear(): void {
     this.users.clear();
     this.workspaces.clear();
@@ -1366,6 +1894,8 @@ export class InMemoryDatabaseService implements IDatabaseService {
     this.sessions.clear();
     this.documents.clear();
     this.chunks.clear();
+    this.chatSessions.clear();
+    this.chatMessages.clear();
   }
 }
 

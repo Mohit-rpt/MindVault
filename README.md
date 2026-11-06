@@ -193,7 +193,7 @@ MindVault enforces strict workspace tenancy isolation and role-based access cont
 ## 8. Testing & Quality Checks
 
 ```bash
-# Run unit, integration, and security tests (160 tests across monorepo)
+# Run unit, integration, and security tests (183 tests across monorepo)
 pnpm test
 
 # Run offline retrieval evaluation benchmark (Precision@K, Recall@K, MRR, nDCG@K)
@@ -201,6 +201,9 @@ pnpm retrieval:evaluate
 
 # Run offline RAG generation benchmark (Citation accuracy, refusal, prompt injection)
 pnpm rag:evaluate
+
+# Run conversational RAG 12-scenario benchmark (Pronouns, ellipticals, memory, abort recovery)
+pnpm conversation:evaluate
 
 # Run strict TypeScript typecheck across all workspaces
 pnpm typecheck
@@ -217,11 +220,12 @@ pnpm format
 
 ---
 
-## 9. Current Status: Phase 4 Completed
+## 9. Current Status: Phase 5 Completed
 
 - [x] **Phase 0: Project Foundation** — Monorepo, Docker Compose, TypeScript Strict Mode, Express API, Worker, React Web, Centralized Error Handling.
 - [x] **Phase 1: Authentication & Workspace Management** — Prisma Schema & Migrations, Argon2id Auth, Session Lifecycle, Token Rotation & Reuse Detection, Workspace RBAC & Isolation, Full React Auth Shell.
 - [x] **Phase 2: Document Ingestion Pipeline & Vector Knowledge Storage** — Multipart file upload, magic byte validation, SHA-256 deduplication, BullMQ async worker, multi-format extraction (PDF, DOCX, TXT, MD), Unicode NFC normalization, structure-aware chunking (700 target / 120 overlap), 768-dim vector embeddings (`nomic-embed-text` / pgvector), HNSW cosine index, Document Library frontend with live status polling.
 - [x] **Phase 3: Retrieval Engine, Hybrid Search & Retrieval Intelligence** — Unicode NFKC query normalization, 768-dim vector query embedding, pgvector cosine search, PostgreSQL Full-Text Search with GIN index, Reciprocal Rank Fusion ($k=60$), pluggable reranker abstraction with fallback, metadata filtering, context assembly with token budgeting, stable source citations (`[S1]`, `[S2]`), React search interface, offline IR evaluation framework (`pnpm retrieval:evaluate`).
 - [x] **Phase 4: Generative RAG Engine, Evidence Synthesis & Streaming Answers** — Evidence-grounded generation protocol, LLM provider abstraction with local Ollama (`qwen3:0.6b` / `qwen3:1.7b`) and deterministic `MockLLMProvider`, prompt injection containment, bracketed citation validator (`[S1]`, `[S2]`), grounding status engine (`GROUNDED`, `PARTIALLY_GROUNDED`, `INSUFFICIENT_EVIDENCE`, `CITATION_INVALID`), SSE streaming API (`POST /api/rag/stream`), React Knowledge Assistant UI, offline RAG benchmark suite (`pnpm rag:evaluate`).
-- [ ] **Phase 5: Conversational RAG, Chat Sessions & Memory** (Next Milestone)
+- [x] **Phase 5: Conversational RAG, Persistent Chat Sessions & Conversation Memory** — Persistent multi-tenant chat threads (`ChatSession`, `ChatMessage`), dual-tier bounded memory (sliding recent window + rolling summaries $\le 120$ words), query contextualization resolving pronouns and ellipticals (`QueryContextService`), anti-hallucination prompt boundaries (`ConversationalPromptBuilder`), SSE streaming with disconnect/abort recovery (`POST /api/conversations/:sessionId/messages/stream`), full conversational UI suite (`ConversationSidebar`, `ConversationHeader`, `ChatTimeline`, `ChatMessage`), 12-scenario evaluation benchmark (`pnpm conversation:evaluate`, 100% passing).
+- [ ] **Phase 6: Knowledge Graph** (Next Milestone)
