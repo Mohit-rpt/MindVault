@@ -11,10 +11,12 @@ import {
   Laptop,
   ArrowRight,
   Sparkles,
+  Bot,
 } from 'lucide-react';
 import type { ApiResponse, SessionDto, WorkspaceDto } from '@mindvault/shared';
 import { DocumentLibrary } from '../documents/DocumentLibrary';
 import { KnowledgeSearch } from '../search/KnowledgeSearch';
+import { KnowledgeAssistant } from '../assistant/KnowledgeAssistant';
 
 export const WorkspaceDashboard: React.FC = () => {
   const { activeWorkspace, accessToken, user, refreshWorkspaces, setActiveWorkspace } = useAuth();
@@ -22,7 +24,7 @@ export const WorkspaceDashboard: React.FC = () => {
   const [sessions, setSessions] = useState<SessionDto[]>([]);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    'overview' | 'search' | 'documents' | 'members' | 'sessions' | 'settings'
+    'overview' | 'assistant' | 'search' | 'documents' | 'members' | 'sessions' | 'settings'
   >('overview');
   const [editName, setEditName] = useState('');
   const [feedbackMessage, setFeedbackMessage] = useState<{
@@ -179,6 +181,17 @@ export const WorkspaceDashboard: React.FC = () => {
             Overview
           </button>
           <button
+            onClick={() => setActiveTab('assistant')}
+            className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
+              activeTab === 'assistant'
+                ? 'bg-blue-600 text-white font-medium shadow-sm'
+                : 'text-vault-400 hover:text-white hover:bg-vault-800/40'
+            }`}
+          >
+            <Bot className="w-3.5 h-3.5 text-blue-400" />
+            AI Assistant
+          </button>
+          <button
             onClick={() => setActiveTab('search')}
             className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
               activeTab === 'search'
@@ -330,6 +343,9 @@ export const WorkspaceDashboard: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Tab: Knowledge Assistant (Phase 4) */}
+      {activeTab === 'assistant' && <KnowledgeAssistant workspaceId={activeWorkspace.id} />}
 
       {/* Tab: Knowledge Search (Phase 3) */}
       {activeTab === 'search' && <KnowledgeSearch />}

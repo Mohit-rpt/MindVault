@@ -1,9 +1,9 @@
 # MindVault — Implementation Roadmap
 
 **Project Name:** MindVault  
-**Status:** Phase 3 Completed  
-**Version:** 1.3  
-**Last Updated:** Phase 3 Completion
+**Status:** Phase 4 Completed  
+**Version:** 1.4  
+**Last Updated:** Phase 4 Completion
 
 ---
 
@@ -21,8 +21,8 @@ This roadmap defines the sequential development phases of **MindVault**, from in
 | **Phase 1** | **Authentication & Workspace** | User identity, sessions, workspace isolation                   | Users can register, log in, manage workspaces with access control         | **COMPLETED** |
 | **Phase 2** | **Document Ingestion**         | Upload pipeline, storage, text extraction, chunking, vectors   | Multi-format ingestion, 768-dim embeddings, pgvector storage, async queue | **COMPLETED** |
 | **Phase 3** | **Retrieval Engine & Search**  | Hybrid search, pgvector similarity, FTS, RRF, context, IR eval | Cosine similarity, PostgreSQL FTS, RRF fusion (k=60), citations, eval     | **COMPLETED** |
-| **Phase 4** | **Basic RAG Chat**             | Context construction, LLM generation, citation linking         | Evidence-grounded answers with verifiable citations                       | Planned       |
-| **Phase 5** | **Advanced Retrieval**         | Hybrid search (vector + BM25/FTS), RRF, reranking              | Measurable NDCG and Recall improvement over vector baseline               | Planned       |
+| **Phase 4** | **Basic RAG Chat**             | Context construction, LLM generation, citation linking         | Evidence-grounded answers with verifiable citations                       | **COMPLETED** |
+| **Phase 5** | **Conversational RAG**         | Multi-turn chat sessions, conversation memory, history         | Contextual query rewriting, conversation persistence, streaming chat      | Planned       |
 | **Phase 6** | **Knowledge Graph**            | Entity/relationship extraction, graph storage & traversal      | Concept relationships queryable alongside vector retrieval                | Planned       |
 | **Phase 7** | **Multimodal Intelligence**    | OCR, scanned documents, image context, table parsing           | Non-text documents extracted and integrated into search index             | Planned       |
 | **Phase 8** | **Memory & Agentic Workflows** | Episodic/semantic memory, research planner, verification       | Multi-step research workflows with grounded memory updates                | Planned       |
@@ -82,15 +82,20 @@ This roadmap defines the sequential development phases of **MindVault**, from in
 - Complete React search UI in `apps/web/src/components/search/` with mode switching, filters, citations, telemetry inspector, and full chunk view.
 - 124 automated unit, integration, and security tests passing across all packages.
 
-### Phase 4: Basic RAG Chat
+### Phase 4: Generative RAG Engine, Evidence Synthesis & Streaming Answers (Completed)
 
-- AI chat interface with streaming message delivery (SSE / WebSockets).
-- RAG Orchestrator: query processing → vector retrieval → context assembly → LLM prompt.
-- LLM Provider adapter (Ollama / OpenAI-compatible).
-- Citation generation and evidence verification engine.
-- Conversation history and persistence.
+- RAG Orchestrator: tenant-isolated hybrid retrieval → context assembly → prompt construction → LLM generation → citation validation → grounding assessment (`RAGService`).
+- Provider Abstraction: `LLMProvider` contract with production `OllamaProvider` (supporting `qwen3:0.6b` / `qwen3:1.7b` with NDJSON streaming) and deterministic `MockLLMProvider` for tests and offline benchmarking.
+- Prompt Engineering: Anti-hallucination system prompt, untrusted document delimiters (`=== BEGIN UNTRUSTED RETRIEVED CONTEXT ===`), and adversarial prompt injection defenses.
+- Citation Validation Engine: Deterministic bracketed citation parser (`[S1]`, `[S2]`) with source cross-referencing and detection of hallucinated/unknown citations (`CitationValidatorService`).
+- Grounding Evaluation: Honest categorization of responses into `GROUNDED`, `PARTIALLY_GROUNDED`, `INSUFFICIENT_EVIDENCE`, and `CITATION_INVALID` (`GroundingService`).
+- Streaming & Batch APIs: `POST /api/rag/answer` (batch) and `POST /api/rag/stream` (SSE streaming with `metadata`, `token`, `done`, and `error` events).
+- Disconnection Handling: Automatic abort signal propagation cancelling upstream model generation on client disconnect.
+- Frontend Knowledge Assistant: React 18 assistant tab in `WorkspaceDashboard` with `ChatComposer`, `StreamingAnswer`, interactive `SourcePanel`, `GroundingBadge`, and `RAGTelemetry`.
+- Offline Benchmark Harness: Deterministic 10-case evaluation suite (`pnpm rag:evaluate`) validating citation accuracy (100%), insufficient evidence detection (100%), and prompt injection containment (100%).
+- 160 automated unit, integration, and security tests passing across all packages.
 
-### Phase 5: Advanced Retrieval & Reranking
+### Phase 5: Conversational RAG, Chat Sessions & Memory
 
 - PostgreSQL Full-Text Search (tsvector/tsquery) integration.
 - Reciprocal Rank Fusion (RRF) for hybrid keyword + vector retrieval.

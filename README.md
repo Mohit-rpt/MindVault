@@ -166,6 +166,13 @@ MindVault enforces strict workspace tenancy isolation and role-based access cont
 | ------ | ----------------------- | ------------ | -------------------------------------------------------------------------- |
 | `POST` | `/api/retrieval/search` | `MEMBER`     | Multi-tenant hybrid search (vector + FTS + RRF k=60), context, & citations |
 
+### Generative RAG & Evidence Synthesis Endpoints (Phase 4)
+
+| Method | Route             | Minimum Role | Description                                                                    |
+| ------ | ----------------- | ------------ | ------------------------------------------------------------------------------ |
+| `POST` | `/api/rag/answer` | `MEMBER`     | Synchronous grounded Q&A with validated bracketed citations & grounding score  |
+| `POST` | `/api/rag/stream` | `MEMBER`     | Server-Sent Events (SSE) streaming answers with metadata, token, & done events |
+
 ---
 
 ## 7. Security Architecture
@@ -178,17 +185,22 @@ MindVault enforces strict workspace tenancy isolation and role-based access cont
 - **Tenant Isolation:** Every route handling tenant data requires `authorizeWorkspace(minimumRole)`, strictly preventing IDOR vulnerabilities across tenants.
 - **Database-Level SQL Scoping:** Vector similarity and full-text search queries strictly enforce workspace scoping directly inside SQL (`WHERE c."workspaceId" = $1 AND d."status" = 'COMPLETED'`), never in application memory.
 - **Storage & Magic Byte Defenses:** Files are stored outside web roots using cryptographically generated keys with strict path traversal defenses. Binary null byte inspection and file header validation prevent spoofed uploads.
+- **Prompt Injection Defense & Delimiters:** Untrusted document chunks are encapsulated within strict structural delimiters (`=== BEGIN UNTRUSTED RETRIEVED CONTEXT ===`) to prevent instruction hijacking.
+- **Deterministic Citation Guardrails:** All generated output citations (`[S1]`, `[S2]`) are verified against retrieved chunks, detecting and flagging hallucinated sources.
 
 ---
 
 ## 8. Testing & Quality Checks
 
 ```bash
-# Run unit, integration, and security tests (124 tests across monorepo)
+# Run unit, integration, and security tests (160 tests across monorepo)
 pnpm test
 
 # Run offline retrieval evaluation benchmark (Precision@K, Recall@K, MRR, nDCG@K)
 pnpm retrieval:evaluate
+
+# Run offline RAG generation benchmark (Citation accuracy, refusal, prompt injection)
+pnpm rag:evaluate
 
 # Run strict TypeScript typecheck across all workspaces
 pnpm typecheck
@@ -205,10 +217,11 @@ pnpm format
 
 ---
 
-## 9. Current Status: Phase 3 Completed
+## 9. Current Status: Phase 4 Completed
 
 - [x] **Phase 0: Project Foundation** — Monorepo, Docker Compose, TypeScript Strict Mode, Express API, Worker, React Web, Centralized Error Handling.
 - [x] **Phase 1: Authentication & Workspace Management** — Prisma Schema & Migrations, Argon2id Auth, Session Lifecycle, Token Rotation & Reuse Detection, Workspace RBAC & Isolation, Full React Auth Shell.
 - [x] **Phase 2: Document Ingestion Pipeline & Vector Knowledge Storage** — Multipart file upload, magic byte validation, SHA-256 deduplication, BullMQ async worker, multi-format extraction (PDF, DOCX, TXT, MD), Unicode NFC normalization, structure-aware chunking (700 target / 120 overlap), 768-dim vector embeddings (`nomic-embed-text` / pgvector), HNSW cosine index, Document Library frontend with live status polling.
 - [x] **Phase 3: Retrieval Engine, Hybrid Search & Retrieval Intelligence** — Unicode NFKC query normalization, 768-dim vector query embedding, pgvector cosine search, PostgreSQL Full-Text Search with GIN index, Reciprocal Rank Fusion ($k=60$), pluggable reranker abstraction with fallback, metadata filtering, context assembly with token budgeting, stable source citations (`[S1]`, `[S2]`), React search interface, offline IR evaluation framework (`pnpm retrieval:evaluate`).
-- [ ] **Phase 4: Basic RAG Chat** (Next Milestone)
+- [x] **Phase 4: Generative RAG Engine, Evidence Synthesis & Streaming Answers** — Evidence-grounded generation protocol, LLM provider abstraction with local Ollama (`qwen3:0.6b` / `qwen3:1.7b`) and deterministic `MockLLMProvider`, prompt injection containment, bracketed citation validator (`[S1]`, `[S2]`), grounding status engine (`GROUNDED`, `PARTIALLY_GROUNDED`, `INSUFFICIENT_EVIDENCE`, `CITATION_INVALID`), SSE streaming API (`POST /api/rag/stream`), React Knowledge Assistant UI, offline RAG benchmark suite (`pnpm rag:evaluate`).
+- [ ] **Phase 5: Conversational RAG, Chat Sessions & Memory** (Next Milestone)

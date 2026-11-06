@@ -40,6 +40,32 @@ const envSchema = z.object({
     .refine((val) => !isNaN(val) && val > 0, {
       message: 'REFRESH_TOKEN_EXPIRY_DAYS must be a positive integer',
     }),
+
+  // Phase 4: Generative RAG & LLM Provider Configuration
+  LLM_PROVIDER: z.enum(['ollama', 'mock']).default('ollama'),
+  OLLAMA_BASE_URL: z.string().default('http://localhost:11434'),
+  OLLAMA_GENERATION_MODEL: z.string().default('qwen3:0.6b'),
+  LLM_REQUEST_TIMEOUT: z
+    .string()
+    .default('60000')
+    .transform((val) => parseInt(val, 10))
+    .refine((val) => !isNaN(val) && val > 0, {
+      message: 'LLM_REQUEST_TIMEOUT must be a positive integer',
+    }),
+  LLM_MAX_OUTPUT_TOKENS: z
+    .string()
+    .default('1024')
+    .transform((val) => parseInt(val, 10))
+    .refine((val) => !isNaN(val) && val > 0, {
+      message: 'LLM_MAX_OUTPUT_TOKENS must be a positive integer',
+    }),
+  LLM_TEMPERATURE: z
+    .string()
+    .default('0.2')
+    .transform((val) => parseFloat(val))
+    .refine((val) => !isNaN(val) && val >= 0 && val <= 2, {
+      message: 'LLM_TEMPERATURE must be a number between 0 and 2',
+    }),
 });
 
 const parsed = envSchema.safeParse(process.env);

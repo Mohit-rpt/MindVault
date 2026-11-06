@@ -408,3 +408,138 @@ export interface RerankerProvider {
     limit?: number,
   ): Promise<{ results: RerankerResult[]; applied: boolean }>;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 4: Generative RAG Engine, Evidence Synthesis & Streaming Schemas
+// ---------------------------------------------------------------------------
+
+export const GroundingStatusEnum = z.enum([
+  'GROUNDED',
+  'PARTIALLY_GROUNDED',
+  'INSUFFICIENT_EVIDENCE',
+  'CITATION_INVALID',
+  'VALIDATION_UNAVAILABLE',
+]);
+export type GroundingStatus = z.infer<typeof GroundingStatusEnum>;
+
+export interface GroundingValidationResult {
+  groundingStatus: GroundingStatus;
+  citationIdsValid: boolean;
+  unknownCitationIds: string[];
+  citationsPresent: boolean;
+  referencedCitationIds: string[];
+  warnings: string[];
+}
+
+export const RAGRetrievalOptionsSchema = z.object({
+  mode: RetrievalModeEnum.default('hybrid'),
+  topK: z.coerce.number().int().min(1).max(50).default(10),
+  filters: RetrievalFiltersSchema.optional(),
+  enableReranking: z.boolean().default(false),
+  maxContextTokens: z.coerce.number().int().min(100).max(16000).default(3000),
+});
+export type RAGRetrievalOptions = z.infer<typeof RAGRetrievalOptionsSchema>;
+
+export const RAGGenerationOptionsSchema = z.object({
+  temperature: z.coerce.number().min(0).max(2).default(0.2),
+  maxOutputTokens: z.coerce.number().int().min(50).max(4096).default(1024),
+  model: z.string().optional(),
+});
+export type RAGGenerationOptions = z.infer<typeof RAGGenerationOptionsSchema>;
+
+export const RAGAnswerRequestSchema = z.object({
+  query: z
+    .string()
+    .trim()
+    .min(1, { message: 'Query cannot be empty' })
+    .max(1000, { message: 'Query cannot exceed 1000 characters' }),
+  retrieval: RAGRetrievalOptionsSchema.optional().default({}),
+  generation: RAGGenerationOptionsSchema.optional().default({}),
+  includeContext: z.boolean().default(false),
+});
+export type RAGAnswerRequest = z.infer<typeof RAGAnswerRequestSchema>;
+export type RAGAnswerRequestInput = z.input<typeof RAGAnswerRequestSchema>;
+
+export interface RAGTimingsDto {
+  retrievalMs: number;
+  contextAssemblyMs: number;
+  promptBuildingMs: number;
+  timeToFirstTokenMs?: number;
+  generationDurationMs: number;
+  validationMs: number;
+  totalMs: number;
+}
+
+export interface RAGMetadataDto {
+  provider: string;
+  model: string;
+  retrievalMode: RetrievalMode;
+  totalSources: number;
+  timings: RAGTimingsDto;
+}
+
+export interface RAGAnswerResponseDto {
+  query: string;
+  answer: string;
+  sources: ContextSourceItem[];
+  grounding: GroundingValidationResult;
+  context?: SearchContextDto;
+  metadata: RAGMetadataDto;
+}
+
+// LLM Provider Interfaces
+export interface LLMProviderInfo {
+  providerName: string;
+  model: string;
+  maxContextTokens: number;
+}
+
+export interface LLMGenerateOptions {
+  temperature?: number;
+  maxTokens?: number;
+  timeoutMs?: number;
+  systemPrompt?: string;
+  stopSequences?: string[];
+}
+
+export interface LLMGenerateResult {
+  text: string;
+  promptTokens?: number;
+  outputTokens?: number;
+  durationMs: number;
+  finishReason?: string;
+}
+
+export interface LLMStreamChunk {
+  text: string;
+  isFinished: boolean;
+  finishReason?: string;
+}
+
+export interface LLMProvider {
+  readonly providerName: string;
+  readonly modelName: string;
+  generate(prompt: string, options?: LLMGenerateOptions): Promise<LLMGenerateResult>;
+  generateStream(prompt: string, options?: LLMGenerateOptions): AsyncIterable<LLMStreamChunk>;
+  getModelInfo(): Promise<LLMProviderInfo>;
+  healthCheck(): Promise<{ ok: boolean; message?: string }>;
+}
+
+// Server-Sent Events (SSE) Stream Protocol
+export type RAGStreamEvent =
+  | { type: 'start'; requestId: string }
+  | {
+      type: 'retrieval_complete';
+      totalSources: number;
+      retrievalMode: RetrievalMode;
+      timings: { retrievalMs: number };
+    }
+  | { type: 'sources'; sources: ContextSourceItem[] }
+  | { type: 'token'; text: string }
+  | { type: 'validation'; grounding: GroundingValidationResult }
+  | {
+      type: 'done';
+      finishReason: string;
+      metadata: { totalMs: number; generationDurationMs: number };
+    }
+  | { type: 'error'; message: string; code?: string };

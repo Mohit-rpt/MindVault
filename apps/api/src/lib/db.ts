@@ -723,13 +723,13 @@ export class PrismaDatabaseService implements IDatabaseService {
         c."pageStart", c."pageEnd", c."metadata", c."createdAt",
         d."originalName" AS "docOriginalName", d."extension" AS "docExtension",
         d."status" AS "docStatus", d."pageCount" AS "docPageCount",
-        ts_rank_cd(to_tsvector('english', c."content"), websearch_to_tsquery('english', $2)) AS "rankScore"
+        ts_rank_cd(c."search_vector", websearch_to_tsquery('english', $2)) AS "rankScore"
       FROM "document_chunks" c
       JOIN "documents" d ON c."documentId" = d."id"
       WHERE ${conditions}
         AND (
-          to_tsvector('english', c."content") @@ websearch_to_tsquery('english', $2)
-          OR to_tsvector('english', c."content") @@ plainto_tsquery('english', $2)
+          c."search_vector" @@ websearch_to_tsquery('english', $2)
+          OR c."search_vector" @@ plainto_tsquery('english', $2)
         )
       ORDER BY "rankScore" DESC
       LIMIT $3
