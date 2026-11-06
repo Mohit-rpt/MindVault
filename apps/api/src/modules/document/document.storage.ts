@@ -3,15 +3,31 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import type { DocumentStorageProvider } from '@mindvault/shared';
 
+function findWorkspaceRoot(startDir: string): string {
+  let curr = startDir;
+  while (curr !== path.dirname(curr)) {
+    if (fs.existsSync(path.join(curr, 'pnpm-workspace.yaml'))) {
+      return curr;
+    }
+    curr = path.dirname(curr);
+  }
+  return process.cwd();
+}
+
 export class LocalFileSystemStorageProvider implements DocumentStorageProvider {
   private baseDir: string;
 
   constructor(baseDir?: string) {
-    this.baseDir = path.resolve(
-      baseDir ||
-        process.env.STORAGE_DIR ||
-        path.join(process.cwd(), 'infrastructure', 'storage', 'documents'),
-    );
+    const rootDir = findWorkspaceRoot(process.cwd());
+    if (baseDir) {
+      this.baseDir = path.isAbsolute(baseDir) ? baseDir : path.resolve(rootDir, baseDir);
+    } else if (process.env.STORAGE_DIR) {
+      this.baseDir = path.isAbsolute(process.env.STORAGE_DIR)
+        ? process.env.STORAGE_DIR
+        : path.resolve(rootDir, process.env.STORAGE_DIR);
+    } else {
+      this.baseDir = path.resolve(rootDir, 'infrastructure', 'storage', 'documents');
+    }
   }
 
   private resolveSafePath(storageKey: string): string {
