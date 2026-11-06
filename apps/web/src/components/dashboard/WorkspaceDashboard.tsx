@@ -10,9 +10,11 @@ import {
   CheckCircle2,
   Laptop,
   ArrowRight,
+  Sparkles,
 } from 'lucide-react';
 import type { ApiResponse, SessionDto, WorkspaceDto } from '@mindvault/shared';
 import { DocumentLibrary } from '../documents/DocumentLibrary';
+import { KnowledgeSearch } from '../search/KnowledgeSearch';
 
 export const WorkspaceDashboard: React.FC = () => {
   const { activeWorkspace, accessToken, user, refreshWorkspaces, setActiveWorkspace } = useAuth();
@@ -20,7 +22,7 @@ export const WorkspaceDashboard: React.FC = () => {
   const [sessions, setSessions] = useState<SessionDto[]>([]);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    'overview' | 'documents' | 'members' | 'sessions' | 'settings'
+    'overview' | 'search' | 'documents' | 'members' | 'sessions' | 'settings'
   >('overview');
   const [editName, setEditName] = useState('');
   const [feedbackMessage, setFeedbackMessage] = useState<{
@@ -177,6 +179,17 @@ export const WorkspaceDashboard: React.FC = () => {
             Overview
           </button>
           <button
+            onClick={() => setActiveTab('search')}
+            className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
+              activeTab === 'search'
+                ? 'bg-purple-600 text-white font-medium shadow-sm'
+                : 'text-vault-400 hover:text-white hover:bg-vault-800/40'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+            Search Knowledge
+          </button>
+          <button
             onClick={() => setActiveTab('documents')}
             className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
               activeTab === 'documents'
@@ -317,6 +330,9 @@ export const WorkspaceDashboard: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Tab: Knowledge Search (Phase 3) */}
+      {activeTab === 'search' && <KnowledgeSearch />}
 
       {/* Tab: Knowledge Documents */}
       {activeTab === 'documents' && <DocumentLibrary />}

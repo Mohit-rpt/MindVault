@@ -13,6 +13,11 @@ declare global {
         userId: string;
         role: WorkspaceRole;
       };
+      workspace?: {
+        id: string;
+        name?: string;
+        role?: WorkspaceRole;
+      };
     }
   }
 }

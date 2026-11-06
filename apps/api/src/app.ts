@@ -8,6 +8,7 @@ import { healthRouter } from './routes/health.js';
 import { authRouter } from './modules/auth/auth.routes.js';
 import { workspaceRouter } from './modules/workspace/workspace.routes.js';
 import { documentRouter } from './modules/document/document.routes.js';
+import { retrievalRoutes } from './modules/retrieval/retrieval.routes.js';
 
 export function createApp(): Express {
   const app = express();
@@ -33,6 +34,7 @@ export function createApp(): Express {
   app.use('/api/auth', authRouter);
   app.use('/api/workspaces', workspaceRouter);
   app.use('/api/documents', documentRouter);
+  app.use('/api/retrieval', retrievalRoutes);
 
   // 404 Handler
   app.use((req: Request, res: Response) => {

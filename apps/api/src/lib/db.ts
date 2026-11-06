@@ -82,6 +82,19 @@ export interface DocumentChunkRecord {
   createdAt: Date;
 }
 
+export interface SearchChunkResult {
+  chunk: DocumentChunkRecord;
+  document: {
+    id: string;
+    originalName: string;
+    extension: string;
+    status: DocumentStatus;
+    pageCount?: number | null;
+  };
+  score: number;
+  distance?: number;
+}
+
 export interface IDatabaseService {
   // User operations
   createUser(data: { name: string; email: string; passwordHash: string }): Promise<UserRecord>;
@@ -176,6 +189,31 @@ export interface IDatabaseService {
   ): Promise<void>;
   getDocumentChunks(documentId: string): Promise<DocumentChunkRecord[]>;
   deleteDocumentChunks(documentId: string): Promise<void>;
+
+  // Retrieval operations (Phase 3)
+  searchVectorChunks(
+    workspaceId: string,
+    queryVector: number[],
+    options?: {
+      topK?: number;
+      documentIds?: string[];
+      fileTypes?: string[];
+      pageStart?: number;
+      pageEnd?: number;
+    },
+  ): Promise<SearchChunkResult[]>;
+
+  searchKeywordChunks(
+    workspaceId: string,
+    queryText: string,
+    options?: {
+      topK?: number;
+      documentIds?: string[];
+      fileTypes?: string[];
+      pageStart?: number;
+      pageEnd?: number;
+    },
+  ): Promise<SearchChunkResult[]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -552,6 +590,178 @@ export class PrismaDatabaseService implements IDatabaseService {
 
   async deleteDocumentChunks(documentId: string): Promise<void> {
     await prisma.documentChunk.deleteMany({ where: { documentId } });
+  }
+
+  async searchVectorChunks(
+    workspaceId: string,
+    queryVector: number[],
+    options?: {
+      topK?: number;
+      documentIds?: string[];
+      fileTypes?: string[];
+      pageStart?: number;
+      pageEnd?: number;
+    },
+  ): Promise<SearchChunkResult[]> {
+    const topK = Math.min(Math.max(options?.topK || 10, 1), 50);
+    const vectorStr = `[${queryVector.join(',')}]`;
+
+    let conditions = `c."workspaceId" = $1 AND d."workspaceId" = $1 AND d."status" = 'COMPLETED' AND c."embedding" IS NOT NULL`;
+    const params: any[] = [workspaceId, vectorStr, topK];
+    let paramIndex = 4;
+
+    if (options?.documentIds && options.documentIds.length > 0) {
+      conditions += ` AND c."documentId" = ANY($${paramIndex}::text[])`;
+      params.push(options.documentIds);
+      paramIndex++;
+    }
+
+    if (options?.fileTypes && options.fileTypes.length > 0) {
+      conditions += ` AND LOWER(d."extension") = ANY($${paramIndex}::text[])`;
+      params.push(options.fileTypes.map((ft) => ft.toLowerCase().replace(/^\./, '')));
+      paramIndex++;
+    }
+
+    if (options?.pageStart !== undefined && options?.pageStart !== null) {
+      conditions += ` AND (c."pageEnd" IS NULL OR c."pageEnd" >= $${paramIndex})`;
+      params.push(options.pageStart);
+      paramIndex++;
+    }
+
+    if (options?.pageEnd !== undefined && options?.pageEnd !== null) {
+      conditions += ` AND (c."pageStart" IS NULL OR c."pageStart" <= $${paramIndex})`;
+      params.push(options.pageEnd);
+      paramIndex++;
+    }
+
+    const query = `
+      SELECT 
+        c."id", c."documentId", c."workspaceId", c."chunkIndex", c."content", c."tokenCount",
+        c."pageStart", c."pageEnd", c."metadata", c."createdAt",
+        d."originalName" AS "docOriginalName", d."extension" AS "docExtension",
+        d."status" AS "docStatus", d."pageCount" AS "docPageCount",
+        (1 - (c."embedding" <=> $2::vector)) AS "similarity",
+        (c."embedding" <=> $2::vector) AS "distance"
+      FROM "document_chunks" c
+      JOIN "documents" d ON c."documentId" = d."id"
+      WHERE ${conditions}
+      ORDER BY c."embedding" <=> $2::vector ASC
+      LIMIT $3
+    `;
+
+    const rows = (await prisma.$queryRawUnsafe(query, ...params)) as any[];
+
+    return rows.map((row) => ({
+      chunk: {
+        id: row.id,
+        documentId: row.documentId,
+        workspaceId: row.workspaceId,
+        chunkIndex: row.chunkIndex,
+        content: row.content,
+        tokenCount: row.tokenCount,
+        pageStart: row.pageStart,
+        pageEnd: row.pageEnd,
+        metadata: row.metadata,
+        createdAt: row.createdAt,
+      },
+      document: {
+        id: row.documentId,
+        originalName: row.docOriginalName,
+        extension: row.docExtension,
+        status: row.docStatus,
+        pageCount: row.docPageCount,
+      },
+      score: Math.max(0, Math.min(1, Number(row.similarity) || 0)),
+      distance: Number(row.distance) || 0,
+    }));
+  }
+
+  async searchKeywordChunks(
+    workspaceId: string,
+    queryText: string,
+    options?: {
+      topK?: number;
+      documentIds?: string[];
+      fileTypes?: string[];
+      pageStart?: number;
+      pageEnd?: number;
+    },
+  ): Promise<SearchChunkResult[]> {
+    const topK = Math.min(Math.max(options?.topK || 10, 1), 50);
+
+    let conditions = `c."workspaceId" = $1 AND d."workspaceId" = $1 AND d."status" = 'COMPLETED'`;
+    const params: any[] = [workspaceId, queryText, topK];
+    let paramIndex = 4;
+
+    if (options?.documentIds && options.documentIds.length > 0) {
+      conditions += ` AND c."documentId" = ANY($${paramIndex}::text[])`;
+      params.push(options.documentIds);
+      paramIndex++;
+    }
+
+    if (options?.fileTypes && options.fileTypes.length > 0) {
+      conditions += ` AND LOWER(d."extension") = ANY($${paramIndex}::text[])`;
+      params.push(options.fileTypes.map((ft) => ft.toLowerCase().replace(/^\./, '')));
+      paramIndex++;
+    }
+
+    if (options?.pageStart !== undefined && options?.pageStart !== null) {
+      conditions += ` AND (c."pageEnd" IS NULL OR c."pageEnd" >= $${paramIndex})`;
+      params.push(options.pageStart);
+      paramIndex++;
+    }
+
+    if (options?.pageEnd !== undefined && options?.pageEnd !== null) {
+      conditions += ` AND (c."pageStart" IS NULL OR c."pageStart" <= $${paramIndex})`;
+      params.push(options.pageEnd);
+      paramIndex++;
+    }
+
+    const query = `
+      SELECT 
+        c."id", c."documentId", c."workspaceId", c."chunkIndex", c."content", c."tokenCount",
+        c."pageStart", c."pageEnd", c."metadata", c."createdAt",
+        d."originalName" AS "docOriginalName", d."extension" AS "docExtension",
+        d."status" AS "docStatus", d."pageCount" AS "docPageCount",
+        ts_rank_cd(to_tsvector('english', c."content"), websearch_to_tsquery('english', $2)) AS "rankScore"
+      FROM "document_chunks" c
+      JOIN "documents" d ON c."documentId" = d."id"
+      WHERE ${conditions}
+        AND (
+          to_tsvector('english', c."content") @@ websearch_to_tsquery('english', $2)
+          OR to_tsvector('english', c."content") @@ plainto_tsquery('english', $2)
+        )
+      ORDER BY "rankScore" DESC
+      LIMIT $3
+    `;
+
+    try {
+      const rows = (await prisma.$queryRawUnsafe(query, ...params)) as any[];
+      return rows.map((row) => ({
+        chunk: {
+          id: row.id,
+          documentId: row.documentId,
+          workspaceId: row.workspaceId,
+          chunkIndex: row.chunkIndex,
+          content: row.content,
+          tokenCount: row.tokenCount,
+          pageStart: row.pageStart,
+          pageEnd: row.pageEnd,
+          metadata: row.metadata,
+          createdAt: row.createdAt,
+        },
+        document: {
+          id: row.documentId,
+          originalName: row.docOriginalName,
+          extension: row.docExtension,
+          status: row.docStatus,
+          pageCount: row.docPageCount,
+        },
+        score: Number(row.rankScore) || 0,
+      }));
+    } catch {
+      return [];
+    }
   }
 }
 
@@ -996,6 +1206,157 @@ export class InMemoryDatabaseService implements IDatabaseService {
         this.chunks.delete(chkId);
       }
     }
+  }
+
+  async searchVectorChunks(
+    workspaceId: string,
+    queryVector: number[],
+    options?: {
+      topK?: number;
+      documentIds?: string[];
+      fileTypes?: string[];
+      pageStart?: number;
+      pageEnd?: number;
+    },
+  ): Promise<SearchChunkResult[]> {
+    const topK = Math.min(Math.max(options?.topK || 10, 1), 50);
+    const results: SearchChunkResult[] = [];
+
+    const normQuery = Math.sqrt(queryVector.reduce((sum, v) => sum + v * v, 0));
+
+    for (const chunk of this.chunks.values()) {
+      if (chunk.workspaceId !== workspaceId) continue;
+      const doc = this.documents.get(chunk.documentId);
+      if (!doc || doc.workspaceId !== workspaceId || doc.status !== 'COMPLETED') continue;
+
+      if (options?.documentIds && options.documentIds.length > 0) {
+        if (!options.documentIds.includes(chunk.documentId)) continue;
+      }
+
+      if (options?.fileTypes && options.fileTypes.length > 0) {
+        const normalizedTypes = options.fileTypes.map((t) => t.toLowerCase().replace(/^\./, ''));
+        if (!normalizedTypes.includes(doc.extension.toLowerCase())) continue;
+      }
+
+      if (options?.pageStart !== undefined && options?.pageStart !== null) {
+        if (chunk.pageEnd !== null && chunk.pageEnd < options.pageStart) continue;
+      }
+
+      if (options?.pageEnd !== undefined && options?.pageEnd !== null) {
+        if (chunk.pageStart !== null && chunk.pageStart > options.pageEnd) continue;
+      }
+
+      if (!chunk.embedding || chunk.embedding.length === 0) continue;
+
+      // Cosine similarity
+      let dotProduct = 0;
+      let normChunk = 0;
+      for (let i = 0; i < queryVector.length; i++) {
+        const v = chunk.embedding[i] || 0;
+        dotProduct += v * queryVector[i];
+        normChunk += v * v;
+      }
+      normChunk = Math.sqrt(normChunk);
+      const similarity = normQuery > 0 && normChunk > 0 ? dotProduct / (normQuery * normChunk) : 0;
+      const clampedSim = Math.max(0, Math.min(1, similarity));
+
+      results.push({
+        chunk,
+        document: {
+          id: doc.id,
+          originalName: doc.originalName,
+          extension: doc.extension,
+          status: doc.status,
+          pageCount: doc.pageCount,
+        },
+        score: clampedSim,
+        distance: 1 - clampedSim,
+      });
+    }
+
+    return results.sort((a, b) => b.score - a.score).slice(0, topK);
+  }
+
+  async searchKeywordChunks(
+    workspaceId: string,
+    queryText: string,
+    options?: {
+      topK?: number;
+      documentIds?: string[];
+      fileTypes?: string[];
+      pageStart?: number;
+      pageEnd?: number;
+    },
+  ): Promise<SearchChunkResult[]> {
+    const topK = Math.min(Math.max(options?.topK || 10, 1), 50);
+    const results: SearchChunkResult[] = [];
+    const normQuery = queryText.toLowerCase().trim();
+    if (!normQuery) return [];
+
+    const queryTerms = normQuery
+      .split(/\s+/)
+      .map((t) => t.replace(/[^a-z0-9]/gi, ''))
+      .filter((t) => t.length > 0);
+
+    for (const chunk of this.chunks.values()) {
+      if (chunk.workspaceId !== workspaceId) continue;
+      const doc = this.documents.get(chunk.documentId);
+      if (!doc || doc.workspaceId !== workspaceId || doc.status !== 'COMPLETED') continue;
+
+      if (options?.documentIds && options.documentIds.length > 0) {
+        if (!options.documentIds.includes(chunk.documentId)) continue;
+      }
+
+      if (options?.fileTypes && options.fileTypes.length > 0) {
+        const normalizedTypes = options.fileTypes.map((t) => t.toLowerCase().replace(/^\./, ''));
+        if (!normalizedTypes.includes(doc.extension.toLowerCase())) continue;
+      }
+
+      if (options?.pageStart !== undefined && options?.pageStart !== null) {
+        if (chunk.pageEnd !== null && chunk.pageEnd < options.pageStart) continue;
+      }
+
+      if (options?.pageEnd !== undefined && options?.pageEnd !== null) {
+        if (chunk.pageStart !== null && chunk.pageStart > options.pageEnd) continue;
+      }
+
+      const lowerContent = chunk.content.toLowerCase();
+      let matchScore = 0;
+      let matchedTerms = 0;
+
+      // Exact phrase match bonus
+      if (lowerContent.includes(normQuery)) {
+        matchScore += 2.0;
+      }
+
+      for (const term of queryTerms) {
+        const termRegex = new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
+        const matches = lowerContent.match(termRegex);
+        if (matches && matches.length > 0) {
+          matchedTerms++;
+          matchScore += Math.log(1 + matches.length);
+        } else if (lowerContent.includes(term)) {
+          matchedTerms += 0.5;
+          matchScore += 0.3;
+        }
+      }
+
+      if (matchedTerms > 0 || matchScore > 0) {
+        results.push({
+          chunk,
+          document: {
+            id: doc.id,
+            originalName: doc.originalName,
+            extension: doc.extension,
+            status: doc.status,
+            pageCount: doc.pageCount,
+          },
+          score: matchScore,
+        });
+      }
+    }
+
+    return results.sort((a, b) => b.score - a.score).slice(0, topK);
   }
 
   clear(): void {

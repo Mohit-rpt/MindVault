@@ -277,3 +277,134 @@ export interface ProcessDocumentJobPayload {
   workspaceId: string;
   userId: string;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 3: Retrieval Engine, Hybrid Search & Intelligence Schemas & Contracts
+// ---------------------------------------------------------------------------
+
+export const RetrievalModeEnum = z.enum(['hybrid', 'semantic', 'keyword']);
+export type RetrievalMode = z.infer<typeof RetrievalModeEnum>;
+
+export const RetrievalFiltersSchema = z
+  .object({
+    documentIds: z.array(z.string().min(1)).optional(),
+    fileTypes: z.array(z.string().trim().toLowerCase()).optional(),
+    pageStart: z.number().int().min(1).optional(),
+    pageEnd: z.number().int().min(1).optional(),
+  })
+  .refine(
+    (data) => {
+      if (data.pageStart && data.pageEnd) {
+        return data.pageStart <= data.pageEnd;
+      }
+      return true;
+    },
+    { message: 'pageStart cannot be greater than pageEnd' },
+  );
+export type RetrievalFilters = z.infer<typeof RetrievalFiltersSchema>;
+
+export const SearchRequestSchema = z.object({
+  query: z
+    .string()
+    .trim()
+    .min(1, { message: 'Query cannot be empty' })
+    .max(1000, { message: 'Query length cannot exceed 1000 characters' }),
+  mode: RetrievalModeEnum.default('hybrid'),
+  topK: z.coerce.number().int().min(1).max(50).default(10),
+  includeContext: z.boolean().default(true),
+  maxContextTokens: z.coerce.number().int().min(100).max(16000).default(3000),
+  filters: RetrievalFiltersSchema.optional(),
+  enableReranking: z.boolean().default(false),
+});
+export type SearchRequest = z.infer<typeof SearchRequestSchema>;
+
+export interface SearchResultItem {
+  chunkId: string;
+  documentId: string;
+  documentName: string;
+  content: string;
+  chunkIndex: number;
+  rank: number;
+  score: number;
+  retrievalSources: Array<'semantic' | 'keyword'>;
+  citationId: string;
+  pageStart: number | null;
+  pageEnd: number | null;
+  tokenCount: number;
+  metadata: Record<string, unknown>;
+}
+
+export interface ContextSourceItem {
+  citationId: string;
+  documentId: string;
+  documentName: string;
+  chunkId: string;
+  chunkIndex: number;
+  pageNumber: number | null;
+  pageRange: string | null;
+  section: string | null;
+  content: string;
+  rank: number;
+  score: number;
+  retrievalSources: string[];
+}
+
+export interface SearchContextDto {
+  content: string;
+  tokenEstimate: number;
+  sources: ContextSourceItem[];
+}
+
+export interface SearchTimingMetadata {
+  queryProcessingMs: number;
+  embeddingGenerationMs?: number;
+  semanticSearchMs?: number;
+  keywordSearchMs?: number;
+  fusionMs?: number;
+  rerankingMs?: number;
+  contextAssemblyMs?: number;
+  totalMs: number;
+}
+
+export interface SearchMetadataDto {
+  semanticSearchUsed: boolean;
+  keywordSearchUsed: boolean;
+  rerankingApplied: boolean;
+  totalResults: number;
+  query: string;
+  normalizedQuery: string;
+  timings: SearchTimingMetadata;
+}
+
+export interface SearchResponseDto {
+  query: string;
+  mode: RetrievalMode;
+  results: SearchResultItem[];
+  context?: SearchContextDto;
+  metadata: SearchMetadataDto;
+}
+
+// Reranker Contracts
+export interface RerankerCandidate {
+  chunkId: string;
+  content: string;
+  score: number;
+  initialRank: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface RerankerResult {
+  chunkId: string;
+  score: number;
+  rank: number;
+}
+
+export interface RerankerProvider {
+  readonly providerName: string;
+  isAvailable(): Promise<boolean>;
+  rerank(
+    query: string,
+    candidates: RerankerCandidate[],
+    limit?: number,
+  ): Promise<{ results: RerankerResult[]; applied: boolean }>;
+}

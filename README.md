@@ -160,6 +160,12 @@ MindVault enforces strict workspace tenancy isolation and role-based access cont
 | `GET`    | `/api/documents/:id/download` | `MEMBER`     | Streams and downloads original file buffer with attachment headers         |
 | `DELETE` | `/api/documents/:id`          | `ADMIN`      | Cascades deletion of document, vector chunks, and physical storage file    |
 
+### Retrieval Engine & Hybrid Search Endpoints (Phase 3)
+
+| Method | Route                   | Minimum Role | Description                                                                |
+| ------ | ----------------------- | ------------ | -------------------------------------------------------------------------- |
+| `POST` | `/api/retrieval/search` | `MEMBER`     | Multi-tenant hybrid search (vector + FTS + RRF k=60), context, & citations |
+
 ---
 
 ## 7. Security Architecture
@@ -170,6 +176,7 @@ MindVault enforces strict workspace tenancy isolation and role-based access cont
 - **Cookie Security:** Refresh tokens are transmitted exclusively in `HttpOnly`, `SameSite=Strict` cookies. Access tokens stay in client memory.
 - **Token Reuse Detection:** Attempting to replay an already rotated refresh token triggers automatic family revocation, terminating all sessions for that account immediately.
 - **Tenant Isolation:** Every route handling tenant data requires `authorizeWorkspace(minimumRole)`, strictly preventing IDOR vulnerabilities across tenants.
+- **Database-Level SQL Scoping:** Vector similarity and full-text search queries strictly enforce workspace scoping directly inside SQL (`WHERE c."workspaceId" = $1 AND d."status" = 'COMPLETED'`), never in application memory.
 - **Storage & Magic Byte Defenses:** Files are stored outside web roots using cryptographically generated keys with strict path traversal defenses. Binary null byte inspection and file header validation prevent spoofed uploads.
 
 ---
@@ -177,8 +184,11 @@ MindVault enforces strict workspace tenancy isolation and role-based access cont
 ## 8. Testing & Quality Checks
 
 ```bash
-# Run unit and integration tests (80 tests covering Auth, Workspace, Document API, Extractors, Chunker, Embeddings, Storage)
+# Run unit, integration, and security tests (124 tests across monorepo)
 pnpm test
+
+# Run offline retrieval evaluation benchmark (Precision@K, Recall@K, MRR, nDCG@K)
+pnpm retrieval:evaluate
 
 # Run strict TypeScript typecheck across all workspaces
 pnpm typecheck
@@ -195,9 +205,10 @@ pnpm format
 
 ---
 
-## 9. Current Status: Phase 2 Completed
+## 9. Current Status: Phase 3 Completed
 
 - [x] **Phase 0: Project Foundation** — Monorepo, Docker Compose, TypeScript Strict Mode, Express API, Worker, React Web, Centralized Error Handling.
 - [x] **Phase 1: Authentication & Workspace Management** — Prisma Schema & Migrations, Argon2id Auth, Session Lifecycle, Token Rotation & Reuse Detection, Workspace RBAC & Isolation, Full React Auth Shell.
 - [x] **Phase 2: Document Ingestion Pipeline & Vector Knowledge Storage** — Multipart file upload, magic byte validation, SHA-256 deduplication, BullMQ async worker, multi-format extraction (PDF, DOCX, TXT, MD), Unicode NFC normalization, structure-aware chunking (700 target / 120 overlap), 768-dim vector embeddings (`nomic-embed-text` / pgvector), HNSW cosine index, Document Library frontend with live status polling.
-- [ ] **Phase 3: Retrieval Engine & Vector Search** (Next Milestone)
+- [x] **Phase 3: Retrieval Engine, Hybrid Search & Retrieval Intelligence** — Unicode NFKC query normalization, 768-dim vector query embedding, pgvector cosine search, PostgreSQL Full-Text Search with GIN index, Reciprocal Rank Fusion ($k=60$), pluggable reranker abstraction with fallback, metadata filtering, context assembly with token budgeting, stable source citations (`[S1]`, `[S2]`), React search interface, offline IR evaluation framework (`pnpm retrieval:evaluate`).
+- [ ] **Phase 4: Basic RAG Chat** (Next Milestone)

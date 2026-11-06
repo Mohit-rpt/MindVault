@@ -1,9 +1,9 @@
 # MindVault — Implementation Roadmap
 
 **Project Name:** MindVault  
-**Status:** Phase 2 Completed  
-**Version:** 1.2  
-**Last Updated:** Phase 2 Completion
+**Status:** Phase 3 Completed  
+**Version:** 1.3  
+**Last Updated:** Phase 3 Completion
 
 ---
 
@@ -15,18 +15,18 @@ This roadmap defines the sequential development phases of **MindVault**, from in
 
 ## Phase Matrix
 
-| Phase       | Title                          | Focus Area                                                    | Completion Criteria                                                       | Status        |
-| ----------- | ------------------------------ | ------------------------------------------------------------- | ------------------------------------------------------------------------- | ------------- |
-| **Phase 0** | **Project Foundation**         | Monorepo, tooling, base skeletons, infrastructure definitions | Dev/build scripts pass, health endpoint active, docker definitions ready  | **COMPLETED** |
-| **Phase 1** | **Authentication & Workspace** | User identity, sessions, workspace isolation                  | Users can register, log in, manage workspaces with access control         | **COMPLETED** |
-| **Phase 2** | **Document Ingestion**         | Upload pipeline, storage, text extraction, chunking, vectors  | Multi-format ingestion, 768-dim embeddings, pgvector storage, async queue | **COMPLETED** |
-| **Phase 3** | **Retrieval Engine & Search**  | Vector models, pgvector indexing, similarity retrieval        | Chunks embedded, indexed in pgvector, retrieved via cosine similarity     | **UPCOMING**  |
-| **Phase 4** | **Basic RAG Chat**             | Context construction, LLM generation, citation linking        | Evidence-grounded answers with verifiable citations                       | Planned       |
-| **Phase 5** | **Advanced Retrieval**         | Hybrid search (vector + BM25/FTS), RRF, reranking             | Measurable NDCG and Recall improvement over vector baseline               | Planned       |
-| **Phase 6** | **Knowledge Graph**            | Entity/relationship extraction, graph storage & traversal     | Concept relationships queryable alongside vector retrieval                | Planned       |
-| **Phase 7** | **Multimodal Intelligence**    | OCR, scanned documents, image context, table parsing          | Non-text documents extracted and integrated into search index             | Planned       |
-| **Phase 8** | **Memory & Agentic Workflows** | Episodic/semantic memory, research planner, verification      | Multi-step research workflows with grounded memory updates                | Planned       |
-| **Phase 9** | **Evaluation & Production**    | Benchmarking, security hardening, monitoring, deployment      | Automated RAG evaluation suite, hardened API, production deploy           | Planned       |
+| Phase       | Title                          | Focus Area                                                     | Completion Criteria                                                       | Status        |
+| ----------- | ------------------------------ | -------------------------------------------------------------- | ------------------------------------------------------------------------- | ------------- |
+| **Phase 0** | **Project Foundation**         | Monorepo, tooling, base skeletons, infrastructure definitions  | Dev/build scripts pass, health endpoint active, docker definitions ready  | **COMPLETED** |
+| **Phase 1** | **Authentication & Workspace** | User identity, sessions, workspace isolation                   | Users can register, log in, manage workspaces with access control         | **COMPLETED** |
+| **Phase 2** | **Document Ingestion**         | Upload pipeline, storage, text extraction, chunking, vectors   | Multi-format ingestion, 768-dim embeddings, pgvector storage, async queue | **COMPLETED** |
+| **Phase 3** | **Retrieval Engine & Search**  | Hybrid search, pgvector similarity, FTS, RRF, context, IR eval | Cosine similarity, PostgreSQL FTS, RRF fusion (k=60), citations, eval     | **COMPLETED** |
+| **Phase 4** | **Basic RAG Chat**             | Context construction, LLM generation, citation linking         | Evidence-grounded answers with verifiable citations                       | Planned       |
+| **Phase 5** | **Advanced Retrieval**         | Hybrid search (vector + BM25/FTS), RRF, reranking              | Measurable NDCG and Recall improvement over vector baseline               | Planned       |
+| **Phase 6** | **Knowledge Graph**            | Entity/relationship extraction, graph storage & traversal      | Concept relationships queryable alongside vector retrieval                | Planned       |
+| **Phase 7** | **Multimodal Intelligence**    | OCR, scanned documents, image context, table parsing           | Non-text documents extracted and integrated into search index             | Planned       |
+| **Phase 8** | **Memory & Agentic Workflows** | Episodic/semantic memory, research planner, verification       | Multi-step research workflows with grounded memory updates                | Planned       |
+| **Phase 9** | **Evaluation & Production**    | Benchmarking, security hardening, monitoring, deployment       | Automated RAG evaluation suite, hardened API, production deploy           | Planned       |
 
 ---
 
@@ -68,12 +68,19 @@ This roadmap defines the sequential development phases of **MindVault**, from in
 - Document Library React frontend with drag-and-drop uploader, live polling for processing documents, filter tabs, metadata inspector, and download/delete controls.
 - 80 automated unit, integration, and security tests passing across all packages.
 
-### Phase 3: Embeddings & Vector Search (Upcoming)
+### Phase 3: Retrieval Engine, Hybrid Search & Retrieval Intelligence (Completed)
 
-- AI provider abstraction interface (`EmbeddingProvider`).
-- Local embedding integration (Ollama / `nomic-embed-text` / `bge-m3`) and hosted fallback options.
-- pgvector HNSW/IVFFlat index creation and cosine similarity queries.
-- Workspace-scoped vector search queries.
+- Query processing and Unicode NFKC normalization, control character stripping, phrase and term extraction (`QueryProcessor`).
+- Query embedding generation reusing 768-dimensional `EmbeddingProvider` abstraction with strict dimension/model compatibility enforcement (`EmbeddingService`).
+- Dense semantic vector search in PostgreSQL with pgvector cosine similarity ($1 - \text{distance}$) and HNSW index.
+- Sparse keyword full-text search in PostgreSQL with generated `search_vector` (`tsvector`), functional GIN indexes, and `ts_rank_cd` scoring.
+- Hybrid search orchestration combining vector and keyword retrieval with Reciprocal Rank Fusion ($k=60$) deduplicating by chunk ID.
+- Pluggable `RerankerProvider` abstraction with graceful `NoOpRerankerProvider` fallback and honest telemetry (`rerankingApplied: false`).
+- Metadata-based filtering (document IDs, file types, page start/end) enforced inside SQL statements alongside workspace isolation.
+- Structured context assembly with strict token budgeting (default 3,000 tokens) and stable source citations (`[S1]`, `[S2]`).
+- Offline IR evaluation benchmark framework (`Precision@K`, `Recall@K`, `MRR`, `nDCG@K`) with deterministic test corpus and CLI runner (`pnpm retrieval:evaluate`).
+- Complete React search UI in `apps/web/src/components/search/` with mode switching, filters, citations, telemetry inspector, and full chunk view.
+- 124 automated unit, integration, and security tests passing across all packages.
 
 ### Phase 4: Basic RAG Chat
 

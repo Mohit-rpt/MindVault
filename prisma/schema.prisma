@@ -127,8 +127,9 @@ model DocumentChunk {
   pageStart   Int?
   pageEnd     Int?
   metadata    Json                        @default("{}")
-  embedding   Unsupported("vector(768)")?
-  createdAt   DateTime                    @default(now())
+  embedding    Unsupported("vector(768)")?
+  searchVector Unsupported("tsvector")?
+  createdAt    DateTime                    @default(now())
 
   document    Document                    @relation(fields: [documentId], references: [id], onDelete: Cascade)
   workspace   Workspace                   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
