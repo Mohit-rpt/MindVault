@@ -1,12 +1,25 @@
 import { createApp } from './app.js';
 import { env } from './config/env.js';
 
+import { ConversationRepository } from './modules/conversations/repositories/conversation.repository.js';
+
 const app = createApp();
 
 const server = app.listen(env.PORT, () => {
   console.log(`🚀 MindVault API server running on http://localhost:${env.PORT}`);
   console.log(`📊 Health endpoint: http://localhost:${env.PORT}/api/health`);
   console.log(`⚙️ Environment: ${env.NODE_ENV}`);
+
+  // Reconcile any orphaned messages left in STREAMING or PENDING status from an earlier process crash
+  ConversationRepository.reconcileOrphanedMessages()
+    .then((count) => {
+      if (count > 0) {
+        console.log(`🧹 Reconciled ${count} orphaned chat message(s) from previous server run.`);
+      }
+    })
+    .catch((err) => {
+      console.warn('⚠️ Failed to reconcile orphaned messages on startup:', err);
+    });
 });
 
 // Graceful shutdown handling

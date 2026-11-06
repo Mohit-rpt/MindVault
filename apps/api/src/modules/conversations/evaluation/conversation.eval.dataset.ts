@@ -1,19 +1,22 @@
 /**
  * MindVault — Phase 5: Conversational RAG Evaluation Dataset
  *
- * 12 Distinct multi-turn scenarios covering:
- * 1. Direct single-turn question
- * 2. Pronoun reference to subject of previous turn
- * 3. Demonstrative reference
- * 4. Elliptical follow-up
- * 5. Comparative follow-up
- * 6. Topic shift away from previous turns
- * 7. Return to earlier topic after shift
- * 8. Multi-turn context spanning beyond recent window (summary compression)
- * 9. Adversarial prompt injection via conversation history
- * 10. Cross-workspace context isolation
- * 11. Disconnect and abort recovery
- * 12. Lifecycle operations (rename, archive, soft-delete)
+ * Scenarios covering all core contextualization and operational requirements:
+ * 1. Direct single-turn question (baseline RAG behavior preserved)
+ * 2. Pronoun reference to subject of previous turn ("What is it used for?")
+ * 3. Demonstrative reference ("Tell me more about that technique")
+ * 4. Elliptical follow-up ("And what about its drawbacks?")
+ * 5. Comparative follow-up ("How does that compare to RabbitMQ?")
+ * 6. Topic switch away from previous turns ("Now, let us talk about Prisma migrations")
+ * 7. Return to earlier topic after shift ("Going back to our first discussion about gradients...")
+ * 8. Multiple possible antecedents ("Where does it store session keys?")
+ * 9. Ambiguous reference with low confidence (preserves original query rather than inventing context)
+ * 10. Self-contained question within multi-turn conversation (must remain unchanged)
+ * 11. Multi-turn context spanning beyond recent window (summary compression)
+ * 12. Adversarial prompt injection via conversation history (untrusted context containment)
+ * 13. Cross-workspace context isolation (verifying no cross-tenant leakage)
+ * 14. Disconnect and abort recovery (stream interrupted mid-turn, verifying CANCELLED status)
+ * 15. Conversation lifecycle operations (rename, archive, soft-delete)
  */
 
 export interface ConversationEvalStep {
@@ -35,12 +38,17 @@ export interface ConversationEvalScenario {
     | 'comparative'
     | 'topic_shift'
     | 'topic_return'
+    | 'multiple_antecedents'
+    | 'ambiguous_reference'
+    | 'self_contained'
     | 'summarization'
     | 'adversarial_containment'
     | 'workspace_isolation'
     | 'abort_recovery'
     | 'lifecycle';
   expectedResolvedTerms?: string[];
+  forbiddenTerms?: string[];
+  expectedOutputSubstring?: string;
   shouldTriggerRewrite?: boolean;
 }
 
@@ -54,6 +62,7 @@ export const CONVERSATION_EVAL_SCENARIOS: ConversationEvalScenario[] = [
     query: 'How does backpropagation calculate gradients in neural networks?',
     expectedCategory: 'single_turn',
     shouldTriggerRewrite: false,
+    expectedOutputSubstring: 'How does backpropagation calculate gradients in neural networks?',
   },
   {
     id: 'scen_02',
@@ -93,9 +102,9 @@ export const CONVERSATION_EVAL_SCENARIOS: ConversationEvalScenario[] = [
   },
   {
     id: 'scen_04',
-    name: 'Elliptical Follow-Up',
+    name: 'Elliptical Follow-Up (No Nonsense Phrase)',
     description:
-      'Follow-up with an incomplete sentence "And what about its drawbacks?" requiring context expansion.',
+      'Follow-up with "And what about its drawbacks?" resolving to pgvector without producing "drawbacks of the benefits".',
     history: [
       { role: 'USER', content: 'What are the benefits of pgvector for embeddings?' },
       {
@@ -106,7 +115,8 @@ export const CONVERSATION_EVAL_SCENARIOS: ConversationEvalScenario[] = [
     ],
     query: 'And what about its drawbacks?',
     expectedCategory: 'elliptical',
-    expectedResolvedTerms: ['pgvector', 'drawbacks'],
+    expectedResolvedTerms: ['drawbacks', 'pgvector'],
+    forbiddenTerms: ['benefits'],
     shouldTriggerRewrite: true,
   },
   {
@@ -129,19 +139,22 @@ export const CONVERSATION_EVAL_SCENARIOS: ConversationEvalScenario[] = [
   {
     id: 'scen_06',
     name: 'Topic Shift Away from Previous Turns',
-    description: 'User abruptly changes the topic from message queues to database migrations.',
+    description: 'User shifts from message queues to database migrations; must NOT append BullMQ.',
     history: [
       { role: 'USER', content: 'How does BullMQ handle message queue persistence?' },
       { role: 'ASSISTANT', content: 'BullMQ uses Redis for fast job storage [S1].' },
     ],
     query: 'Now, let us talk about Prisma migrations in production.',
     expectedCategory: 'topic_shift',
-    shouldTriggerRewrite: false,
+    expectedResolvedTerms: ['prisma migrations'],
+    forbiddenTerms: ['bullmq', 'redis'],
+    shouldTriggerRewrite: true,
   },
   {
     id: 'scen_07',
-    name: 'Return to Earlier Topic After Shift',
-    description: 'User returns to the first topic discussed after an intermediate topic shift.',
+    name: 'Return to Earlier Topic After Intermediate Shift',
+    description:
+      'User returns to gradients after intermediate Redis turn; must NOT contain Redis caching.',
     history: [
       { role: 'USER', content: 'How do neural networks compute gradients?' },
       { role: 'ASSISTANT', content: 'They use backpropagation and the chain rule [S1].' },
@@ -154,14 +167,61 @@ export const CONVERSATION_EVAL_SCENARIOS: ConversationEvalScenario[] = [
     query:
       'Going back to our first discussion about gradients, how does learning rate affect them?',
     expectedCategory: 'topic_return',
-    expectedResolvedTerms: ['gradients', 'backpropagation'],
+    expectedResolvedTerms: ['gradients', 'learning rate'],
+    forbiddenTerms: ['redis', 'caching'],
     shouldTriggerRewrite: true,
   },
   {
     id: 'scen_08',
+    name: 'Multiple Possible Antecedents',
+    description:
+      'Follow-up asks about session storage when both Redis and PostgreSQL were mentioned in the previous turn.',
+    history: [
+      { role: 'USER', content: 'Explain how Redis caches queries from PostgreSQL.' },
+      {
+        role: 'ASSISTANT',
+        content: 'Redis stores query results in memory to reduce database load [S1].',
+      },
+    ],
+    query: 'Where does it store session keys?',
+    expectedCategory: 'multiple_antecedents',
+    expectedResolvedTerms: ['redis', 'session keys'],
+    shouldTriggerRewrite: true,
+  },
+  {
+    id: 'scen_09',
+    name: 'Ambiguous Reference (Preserves Original Query)',
+    description:
+      'User submits an ambiguous single-word follow-up with insufficient confidence; preserves query without inventing context.',
+    history: [
+      { role: 'USER', content: 'Explain vector search vs keyword search.' },
+      { role: 'ASSISTANT', content: 'Hybrid search combines both using RRF [S1].' },
+    ],
+    query: 'Why?',
+    expectedCategory: 'ambiguous_reference',
+    shouldTriggerRewrite: true,
+    expectedResolvedTerms: ['why', 'search'],
+  },
+  {
+    id: 'scen_10',
+    name: 'Self-Contained Question Unchanged',
+    description:
+      'User asks a complete, self-contained question during an active conversation; must remain unmodified.',
+    history: [
+      { role: 'USER', content: 'How does BullMQ handle message queue persistence?' },
+      { role: 'ASSISTANT', content: 'BullMQ uses Redis for fast job storage [S1].' },
+    ],
+    query: 'What is an HNSW index in PostgreSQL pgvector?',
+    expectedCategory: 'self_contained',
+    shouldTriggerRewrite: false,
+    expectedOutputSubstring: 'What is an HNSW index in PostgreSQL pgvector?',
+    forbiddenTerms: ['bullmq', 'queue'],
+  },
+  {
+    id: 'scen_11',
     name: 'Multi-Turn Context Beyond Window (Summary Compression)',
     description:
-      'Conversation exceeds recent message window threshold (6 messages), triggering rolling summary.',
+      'Conversation exceeds recent message window threshold, triggering rolling summary.',
     history: [
       { role: 'USER', content: 'Step 1: Explain data models in MindVault.' },
       {
@@ -186,7 +246,7 @@ export const CONVERSATION_EVAL_SCENARIOS: ConversationEvalScenario[] = [
     shouldTriggerRewrite: false,
   },
   {
-    id: 'scen_09',
+    id: 'scen_12',
     name: 'Adversarial Prompt Injection via History',
     description:
       'History contains simulated prompt injection attempting to leak the system prompt or override instructions.',
@@ -205,7 +265,7 @@ export const CONVERSATION_EVAL_SCENARIOS: ConversationEvalScenario[] = [
     shouldTriggerRewrite: false,
   },
   {
-    id: 'scen_10',
+    id: 'scen_13',
     name: 'Cross-Workspace Context Isolation',
     description:
       'Verifies that conversation sessions and messages from Workspace A cannot be accessed from Workspace B.',
@@ -215,7 +275,7 @@ export const CONVERSATION_EVAL_SCENARIOS: ConversationEvalScenario[] = [
     shouldTriggerRewrite: false,
   },
   {
-    id: 'scen_11',
+    id: 'scen_14',
     name: 'Disconnect and Abort Recovery',
     description:
       'Verifies that aborted or disconnected streams transition to CANCELLED and do not remain stuck in STREAMING.',
@@ -225,7 +285,7 @@ export const CONVERSATION_EVAL_SCENARIOS: ConversationEvalScenario[] = [
     shouldTriggerRewrite: false,
   },
   {
-    id: 'scen_12',
+    id: 'scen_15',
     name: 'Conversation Lifecycle Operations',
     description:
       'Verifies rename, archive, list, and soft-delete lifecycle operations adhere to multi-tenant rules.',

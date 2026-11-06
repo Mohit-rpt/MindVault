@@ -73,9 +73,22 @@ export class SummaryService {
     const newSummaryText = await this.synthesizeSummary(session.summary, completedMessages);
 
     if (newSummaryText) {
+      // Optimistic Concurrency Control: verify session has not been updated concurrently
+      const currentSession = await ConversationRepository.findSessionById(sessionId, workspaceId);
+      if (
+        !currentSession ||
+        currentSession.summaryVersion > session.summaryVersion ||
+        currentSession.summarizedThroughSeq >= latestSeq
+      ) {
+        console.warn(
+          `[SummaryService] Stale summary write discarded for session ${sessionId} (base v${session.summaryVersion}, current v${currentSession?.summaryVersion})`,
+        );
+        return currentSession?.summary || session.summary;
+      }
+
       await ConversationRepository.updateSession(sessionId, workspaceId, {
         summary: newSummaryText,
-        summaryVersion: session.summaryVersion + 1,
+        summaryVersion: currentSession.summaryVersion + 1,
         summarizedThroughSeq: latestSeq,
         summaryUpdatedAt: new Date(),
       });

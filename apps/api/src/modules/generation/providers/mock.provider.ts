@@ -79,6 +79,30 @@ export class MockLLMProvider implements LLMProvider {
 
     // Handle query reformulation prompts
     if (lowerPrompt.includes('reformulate the latest question')) {
+      if (lowerPrompt.includes('drawbacks') && lowerPrompt.includes('pgvector')) {
+        return 'drawbacks of pgvector for embeddings';
+      }
+      if (lowerPrompt.includes('compare') && lowerPrompt.includes('rabbitmq')) {
+        return 'How does BullMQ compare to RabbitMQ?';
+      }
+      if (lowerPrompt.includes('gin') && lowerPrompt.includes('full-text')) {
+        return 'What is a PostgreSQL GIN index used for in full-text search?';
+      }
+      if (lowerPrompt.includes('gradients') && lowerPrompt.includes('learning rate')) {
+        return 'how does learning rate affect gradients in neural networks?';
+      }
+      if (lowerPrompt.includes('prisma migrations')) {
+        return 'Prisma migrations in production';
+      }
+      if (lowerPrompt.includes('why?') || lowerPrompt.includes('user question: why')) {
+        return 'Why use hybrid vector and keyword search?';
+      }
+      if (lowerPrompt.includes('rrf') || lowerPrompt.includes('reciprocal rank fusion')) {
+        return 'Tell me more about Reciprocal Rank Fusion (RRF) technique and its formula.';
+      }
+      if (lowerPrompt.includes('session keys')) {
+        return 'Where does Redis store session keys?';
+      }
       if (lowerPrompt.includes('limitations')) {
         return 'limitations of neural network architecture';
       }

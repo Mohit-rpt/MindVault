@@ -304,6 +304,16 @@ export class ConversationController {
         );
       }
 
+      // Pre-flight check: verify session exists and belongs to user before writing SSE headers
+      const session = await ConversationRepository.findSessionById(sessionId, workspaceId);
+      if (!session) {
+        throw new AppError(404, 'NOT_FOUND', 'Conversation not found');
+      }
+
+      if (session.userId !== userId) {
+        throw new AppError(403, 'FORBIDDEN', 'Access to conversation is forbidden');
+      }
+
       // Configure SSE response headers
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache, no-transform');

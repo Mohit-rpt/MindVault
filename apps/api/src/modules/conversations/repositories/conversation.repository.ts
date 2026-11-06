@@ -172,4 +172,8 @@ export class ConversationRepository {
     const messages = await dbService.getRecentMessagesForContext(sessionId, workspaceId, limit);
     return messages.map(mapMessageToDto);
   }
+
+  public static async reconcileOrphanedMessages(): Promise<number> {
+    return dbService.reconcileOrphanedMessages();
+  }
 }

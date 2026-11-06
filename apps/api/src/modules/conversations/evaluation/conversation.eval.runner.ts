@@ -145,7 +145,9 @@ export async function runConversationEvaluation(): Promise<ConversationEvalMetri
         case 'demonstrative_resolution':
         case 'elliptical':
         case 'comparative':
-        case 'topic_return': {
+        case 'topic_return':
+        case 'multiple_antecedents':
+        case 'ambiguous_reference': {
           // Conversational rewrite resolution
           const messagesForRewrite: ChatMessageDto[] = scenario.history.map((h, i) => ({
             id: `msg_eval_${i}`,
@@ -172,12 +174,60 @@ export async function runConversationEvaluation(): Promise<ConversationEvalMetri
           const lowerRewritten = rewriteResult.contextualQuery.toLowerCase();
           const matchesExpected =
             !scenario.expectedResolvedTerms ||
-            scenario.expectedResolvedTerms.some((term) =>
+            scenario.expectedResolvedTerms.every((term) =>
               lowerRewritten.includes(term.toLowerCase()),
             );
 
-          passed = rewriteResult.wasRewritten && matchesExpected;
+          const noForbiddenTerms =
+            !scenario.forbiddenTerms ||
+            scenario.forbiddenTerms.every((term) => !lowerRewritten.includes(term.toLowerCase()));
+
+          const matchesSubstring =
+            !scenario.expectedOutputSubstring ||
+            rewriteResult.contextualQuery.includes(scenario.expectedOutputSubstring);
+
+          const matchesRewriteFlag =
+            scenario.shouldTriggerRewrite === undefined ||
+            rewriteResult.wasRewritten === scenario.shouldTriggerRewrite;
+
+          passed = matchesRewriteFlag && matchesExpected && noForbiddenTerms && matchesSubstring;
           details = `Rewritten: "${rewriteResult.contextualQuery}"`;
+          break;
+        }
+
+        case 'self_contained': {
+          const messagesForRewrite: ChatMessageDto[] = scenario.history.map((h, i) => ({
+            id: `msg_eval_${i}`,
+            sessionId: 'sess_eval',
+            workspaceId: evalWorkspaceId,
+            role: h.role,
+            content: h.content,
+            status: 'COMPLETED' as const,
+            sequenceNumber: i + 1,
+            citations: [],
+            metadata: {},
+            tokenEstimate: 50,
+            createdAt: new Date().toISOString(),
+            completedAt: new Date().toISOString(),
+          }));
+
+          const rewriteResult = await QueryContextService.contextualizeQuery(
+            scenario.query,
+            messagesForRewrite,
+            null,
+          );
+
+          const lowerRewritten = rewriteResult.contextualQuery.toLowerCase();
+          const noForbiddenTerms =
+            !scenario.forbiddenTerms ||
+            scenario.forbiddenTerms.every((term) => !lowerRewritten.includes(term.toLowerCase()));
+
+          const matchesSubstring =
+            !scenario.expectedOutputSubstring ||
+            rewriteResult.contextualQuery.includes(scenario.expectedOutputSubstring);
+
+          passed = !rewriteResult.wasRewritten && noForbiddenTerms && matchesSubstring;
+          details = `Unmodified: "${rewriteResult.contextualQuery}"`;
           break;
         }
 
@@ -204,8 +254,18 @@ export async function runConversationEvaluation(): Promise<ConversationEvalMetri
             null,
           );
 
-          // Topic shift is self-contained and should preserve the Prisma migrations subject
-          passed = rewriteResult.contextualQuery.toLowerCase().includes('prisma');
+          const lowerRewritten = rewriteResult.contextualQuery.toLowerCase();
+          const matchesExpected =
+            !scenario.expectedResolvedTerms ||
+            scenario.expectedResolvedTerms.every((term) =>
+              lowerRewritten.includes(term.toLowerCase()),
+            );
+
+          const noForbiddenTerms =
+            !scenario.forbiddenTerms ||
+            scenario.forbiddenTerms.every((term) => !lowerRewritten.includes(term.toLowerCase()));
+
+          passed = matchesExpected && noForbiddenTerms;
           details = `Topic preserved: "${rewriteResult.contextualQuery}"`;
           break;
         }

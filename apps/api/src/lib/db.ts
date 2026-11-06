@@ -326,6 +326,7 @@ export interface IDatabaseService {
     workspaceId: string,
     limit?: number,
   ): Promise<ChatMessageRecord[]>;
+  reconcileOrphanedMessages(): Promise<number>;
 }
 
 // ---------------------------------------------------------------------------
@@ -964,36 +965,57 @@ export class PrismaDatabaseService implements IDatabaseService {
     metadata?: any;
     tokenEstimate?: number;
   }): Promise<ChatMessageRecord> {
-    const seq =
-      data.sequenceNumber !== undefined
-        ? data.sequenceNumber
-        : await this.getNextMessageSequence(data.sessionId);
-    const msg = await prisma.chatMessage.create({
+    return prisma.$transaction(async (tx) => {
+      let seq = data.sequenceNumber;
+      if (seq === undefined) {
+        const last = await tx.chatMessage.findFirst({
+          where: { sessionId: data.sessionId },
+          orderBy: { sequenceNumber: 'desc' },
+          select: { sequenceNumber: true },
+        });
+        seq = (last?.sequenceNumber ?? 0) + 1;
+      }
+
+      const msg = await tx.chatMessage.create({
+        data: {
+          id: data.id,
+          sessionId: data.sessionId,
+          workspaceId: data.workspaceId,
+          role: data.role,
+          content: data.content,
+          status: data.status || 'PENDING',
+          sequenceNumber: seq,
+          citations: data.citations || [],
+          metadata: data.metadata || {},
+          tokenEstimate: data.tokenEstimate || 0,
+        },
+      });
+
+      await tx.chatSession
+        .update({
+          where: { id: data.sessionId },
+          data: {
+            messageCount: { increment: 1 },
+            lastMessageAt: msg.createdAt,
+          },
+        })
+        .catch(() => {});
+
+      return msg as unknown as ChatMessageRecord;
+    });
+  }
+
+  async reconcileOrphanedMessages(): Promise<number> {
+    const result = await prisma.chatMessage.updateMany({
+      where: {
+        status: { in: ['STREAMING', 'PENDING'] },
+      },
       data: {
-        id: data.id,
-        sessionId: data.sessionId,
-        workspaceId: data.workspaceId,
-        role: data.role,
-        content: data.content,
-        status: data.status || 'PENDING',
-        sequenceNumber: seq,
-        citations: data.citations || [],
-        metadata: data.metadata || {},
-        tokenEstimate: data.tokenEstimate || 0,
+        status: 'FAILED',
+        completedAt: new Date(),
       },
     });
-
-    await prisma.chatSession
-      .update({
-        where: { id: data.sessionId },
-        data: {
-          messageCount: { increment: 1 },
-          lastMessageAt: msg.createdAt,
-        },
-      })
-      .catch(() => {});
-
-    return msg as unknown as ChatMessageRecord;
+    return result.count;
   }
 
   async findChatMessageById(id: string, sessionId: string): Promise<ChatMessageRecord | null> {
@@ -1082,6 +1104,7 @@ export class InMemoryDatabaseService implements IDatabaseService {
   public chunks: Map<string, DocumentChunkRecord> = new Map();
   public chatSessions: Map<string, ChatSessionRecord> = new Map();
   public chatMessages: Map<string, ChatMessageRecord> = new Map();
+  private sessionLocks: Map<string, Promise<void>> = new Map();
 
   async createUser(data: {
     name: string;
@@ -1778,35 +1801,84 @@ export class InMemoryDatabaseService implements IDatabaseService {
     metadata?: any;
     tokenEstimate?: number;
   }): Promise<ChatMessageRecord> {
-    const seq =
-      data.sequenceNumber !== undefined
-        ? data.sequenceNumber
-        : await this.getNextMessageSequence(data.sessionId);
+    const currentLock = this.sessionLocks.get(data.sessionId) || Promise.resolve();
+    let releaseLock!: () => void;
+    const nextLock = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+    this.sessionLocks.set(data.sessionId, nextLock);
 
-    const message: ChatMessageRecord = {
-      id: data.id || `msg_${Math.random().toString(36).slice(2, 11)}`,
-      sessionId: data.sessionId,
-      workspaceId: data.workspaceId,
-      role: data.role,
-      content: data.content,
-      status: data.status || 'PENDING',
-      sequenceNumber: seq,
-      citations: data.citations || [],
-      metadata: data.metadata || {},
-      tokenEstimate: data.tokenEstimate || 0,
-      createdAt: new Date(),
-      completedAt: null,
-    };
-    this.chatMessages.set(message.id, message);
+    try {
+      await currentLock;
 
-    const session = this.chatSessions.get(data.sessionId);
-    if (session) {
-      session.messageCount += 1;
-      session.lastMessageAt = message.createdAt;
-      session.updatedAt = message.createdAt;
+      let seq = data.sequenceNumber;
+      if (seq === undefined) {
+        let maxSeq = 0;
+        for (const msg of this.chatMessages.values()) {
+          if (msg.sessionId === data.sessionId && msg.sequenceNumber > maxSeq) {
+            maxSeq = msg.sequenceNumber;
+          }
+        }
+        seq = maxSeq + 1;
+      } else {
+        // Enforce unique constraint: (sessionId, sequenceNumber)
+        for (const msg of this.chatMessages.values()) {
+          if (msg.sessionId === data.sessionId && msg.sequenceNumber === seq) {
+            throw new Error(`Unique constraint failed on the fields: (sessionId, sequenceNumber)`);
+          }
+        }
+      }
+
+      const message: ChatMessageRecord = {
+        id: data.id || `msg_${Math.random().toString(36).slice(2, 11)}`,
+        sessionId: data.sessionId,
+        workspaceId: data.workspaceId,
+        role: data.role,
+        content: data.content,
+        status: data.status || 'PENDING',
+        sequenceNumber: seq,
+        citations: data.citations || [],
+        metadata: data.metadata || {},
+        tokenEstimate: data.tokenEstimate || 0,
+        createdAt: new Date(),
+        completedAt: null,
+      };
+      this.chatMessages.set(message.id, message);
+
+      const session = this.chatSessions.get(data.sessionId);
+      if (session) {
+        session.messageCount += 1;
+        session.lastMessageAt = message.createdAt;
+        session.updatedAt = message.createdAt;
+      }
+
+      return message;
+    } finally {
+      releaseLock();
+      if (this.sessionLocks.get(data.sessionId) === nextLock) {
+        this.sessionLocks.delete(data.sessionId);
+      }
     }
+  }
 
-    return message;
+  async reconcileOrphanedMessages(): Promise<number> {
+    let count = 0;
+    for (const [id, msg] of this.chatMessages.entries()) {
+      if (msg.status === 'STREAMING' || msg.status === 'PENDING') {
+        this.chatMessages.set(id, {
+          ...msg,
+          status: 'FAILED',
+          completedAt: new Date(),
+          metadata: {
+            ...msg.metadata,
+            error: 'Reconciled orphaned message on service initialization',
+            recovery: 'Reconciled orphaned message on service initialization',
+          },
+        });
+        count++;
+      }
+    }
+    return count;
   }
 
   async findChatMessageById(id: string, sessionId: string): Promise<ChatMessageRecord | null> {

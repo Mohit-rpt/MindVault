@@ -114,6 +114,7 @@ export class ConversationRAGService {
         request.content,
         historyContext,
         session.summary,
+        { useLLM: true },
       );
       const contextualizationMs = Math.round((performance.now() - ctxStart) * 100) / 100;
 
