@@ -21,6 +21,7 @@ import { RetrievalService } from '../../retrieval/services/retrieval.service.js'
 import { GroundingService } from '../../generation/services/grounding.service.js';
 import { LLMProviderFactory } from '../../generation/providers/provider.factory.js';
 import { ContextAssembler } from '../../retrieval/context/context.assembler.js';
+import { env } from '../../../config/env.js';
 import type {
   SendConversationMessageRequest,
   ConversationStreamEvent,
@@ -172,8 +173,8 @@ export class ConversationRAGService {
 
       const stream = provider.generateStream(userPrompt, {
         systemPrompt,
-        temperature: request.generation?.temperature ?? 0.2,
-        maxTokens: request.generation?.maxOutputTokens ?? 1024,
+        temperature: request.generation?.temperature ?? env.LLM_TEMPERATURE ?? 0.2,
+        maxTokens: request.generation?.maxOutputTokens ?? env.LLM_MAX_OUTPUT_TOKENS ?? 512,
       });
 
       for await (const chunk of stream) {
