@@ -22,6 +22,10 @@ export class EntityNormalizer {
     REQUIRES: 'DEPENDS_ON',
     RELIANT_ON: 'DEPENDS_ON',
     RELIES_ON: 'DEPENDS_ON',
+    BASED_ON: 'DEPENDS_ON',
+    RUNS_ON: 'DEPENDS_ON',
+    RUNNING_ON: 'DEPENDS_ON',
+    HOSTED_ON: 'DEPENDS_ON',
 
     // Usage & Utilization
     UTILIZES: 'USES',
@@ -30,6 +34,7 @@ export class EntityNormalizer {
     EMPLOYING: 'USES',
     CONSUMES: 'USES',
     CALLS: 'USES',
+    INVOKES: 'USES',
 
     // Composition / Membership
     IS_PART_OF: 'PART_OF',
@@ -38,9 +43,13 @@ export class EntityNormalizer {
     MEMBER_OF: 'PART_OF',
     INCLUDED_IN: 'PART_OF',
     SUBSET_OF: 'PART_OF',
+    INCLUDES: 'CONTAINS',
+    COMPOSED_OF: 'CONTAINS',
+    CONSISTS_OF: 'CONTAINS',
 
     // Implementation & Architecture
     REALIZES: 'IMPLEMENTS',
+    EXTENDS: 'IMPLEMENTS',
     IMPLEMENTED_BY: 'IMPLEMENTED_IN',
     BUILT_WITH: 'IMPLEMENTED_IN',
     WRITTEN_IN: 'IMPLEMENTED_IN',
@@ -52,6 +61,7 @@ export class EntityNormalizer {
     TALKS_TO: 'CONNECTS_TO',
     EXCHANGES_WITH: 'CONNECTS_TO',
     INTEGRATES_WITH: 'CONNECTS_TO',
+    LINKED_TO: 'CONNECTS_TO',
 
     // Production & Creation
     MANUFACTURES: 'PRODUCES',
@@ -59,6 +69,15 @@ export class EntityNormalizer {
     BUILDS: 'PRODUCES',
     CREATES: 'PRODUCES',
     AUTHORS: 'PRODUCES',
+    COMPILES_TO: 'PRODUCES',
+
+    // Development & Authorship
+    DEVELOPED_BY: 'DEVELOPED',
+    CREATED_BY: 'DEVELOPED',
+    AUTHORED_BY: 'DEVELOPED',
+    INVENTED_BY: 'DEVELOPED',
+    BUILT_BY: 'DEVELOPED',
+    WRITTEN_BY: 'DEVELOPED',
 
     // Storage & Persistence
     PERSISTS: 'STORES',
@@ -73,6 +92,11 @@ export class EntityNormalizer {
     BASED_IN: 'LOCATED_IN',
     HEADQUARTERED_IN: 'LOCATED_IN',
     SITUATED_IN: 'LOCATED_IN',
+
+    // Similarity & Equivalence
+    COMPARED_TO: 'SIMILAR_TO',
+    ASSOCIATED_WITH: 'RELATED_TO',
+    PERTAINS_TO: 'RELATED_TO',
   });
 
   /**

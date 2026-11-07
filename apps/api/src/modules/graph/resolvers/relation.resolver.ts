@@ -23,6 +23,62 @@ export interface ValidatedRelation {
   evidence: string;
 }
 
+export type RelationValidationFailureReason =
+  | 'UNRESOLVED_ENDPOINT'
+  | 'SELF_LOOP'
+  | 'UNSUPPORTED_RELATION_TYPE'
+  | 'LOW_CONFIDENCE'
+  | 'INVALID_EVIDENCE';
+
+export interface RelationValidationResult {
+  isValid: boolean;
+  validated?: ValidatedRelation;
+  failureReason?: RelationValidationFailureReason;
+}
+
+/**
+ * Controlled Canonical Relation Vocabulary.
+ * Unapproved, ambiguous, or hallucinated relation predicates are rejected.
+ */
+export const APPROVED_RELATION_TYPES: ReadonlySet<string> = new Set([
+  // Structural & Compositional
+  'PART_OF',
+  'CONTAINS',
+  'IMPLEMENTS',
+  'IMPLEMENTED_IN',
+  'EMBEDS',
+
+  // Behavioral, Functional & Architectural
+  'USES',
+  'USED_FOR',
+  'DEPENDS_ON',
+  'BUILT_FOR',
+  'CONNECTS_TO',
+  'INTERACTS_WITH',
+  'PRODUCES',
+  'PRODUCED_BY',
+  'STORES',
+  'STORED_IN',
+  'ORCHESTRATES',
+  'COMBINES',
+  'SUPPORTS',
+  'ENFORCES',
+
+  // Organizational & Attributive
+  'WORKS_FOR',
+  'EMPLOYS',
+  'OWNS',
+  'OWNED_BY',
+  'LOCATED_IN',
+  'DEVELOPED',
+
+  // Equivalence & Semantic Association
+  'SIMILAR_TO',
+  'PEER_OF',
+  'EQUIVALENT_TO',
+  'RELATED_TO',
+]);
+
 /**
  * Inverse relation pairs mapping passive/subordinate forms to active/canonical forms.
  * When an inverse relation already exists in the graph, evidence is attached to the existing
@@ -84,14 +140,13 @@ export class RelationResolver {
   constructor(private readonly graphRepo: IGraphRepository) {}
 
   /**
-   * Validates and prepares an extracted relation against chunk-resolved entities.
-   * Throws an error or returns null if the relation is invalid (e.g. self-loop, missing endpoint).
+   * Validates and prepares an extracted relation against chunk-resolved entities with detailed diagnostic reason.
    */
-  public validate(
+  public validateWithDetails(
     extracted: ExtractedRelation,
     entityMap: Map<string, string>, // Map of normalized entity name -> resolved entity ID
     chunkContent: string,
-  ): ValidatedRelation | null {
+  ): RelationValidationResult {
     // 1. Resolve source and target entity IDs
     const normSource = EntityNormalizer.normalize(extracted.sourceEntity);
     const normTarget = EntityNormalizer.normalize(extracted.targetEntity);
@@ -101,16 +156,21 @@ export class RelationResolver {
 
     if (!sourceEntityId || !targetEntityId) {
       // Unresolved endpoint: drop hallucinated or unlinked relation
-      return null;
+      return { isValid: false, failureReason: 'UNRESOLVED_ENDPOINT' };
     }
 
     // 2. Reject self-loops (source == target)
     if (sourceEntityId === targetEntityId) {
-      return null;
+      return { isValid: false, failureReason: 'SELF_LOOP' };
     }
 
     // 3. Normalize relation type with synonym canonicalization
     const relationType = EntityNormalizer.normalizeRelationType(extracted.relationType);
+
+    // Enforce controlled vocabulary: reject relations not in approved taxonomy
+    if (!APPROVED_RELATION_TYPES.has(relationType)) {
+      return { isValid: false, failureReason: 'UNSUPPORTED_RELATION_TYPE' };
+    }
 
     // 4. Canonicalize symmetric relation endpoints (e.g. CONNECTS_TO, SIMILAR_TO)
     // Order endpoints lexicographically so (A, CONNECTS_TO, B) and (B, CONNECTS_TO, A) map to the exact same relation
@@ -123,28 +183,44 @@ export class RelationResolver {
       }
     }
 
-    // 5. Validate confidence score bounds [0.0, 1.0]
+    // 5. Validate confidence score bounds [0.0, 1.0] and threshold >= 0.5
     const confidence = Math.min(1.0, Math.max(0.0, extracted.confidence ?? 0.8));
     if (confidence < 0.5) {
-      // Drop very low confidence relations
-      return null;
+      // Drop low confidence relations
+      return { isValid: false, failureReason: 'LOW_CONFIDENCE' };
     }
 
     // 6. Strict evidence validation: Ensure entire evidence sentence/clause is grounded in chunk
     const evidence = extracted.evidence?.trim();
     if (!evidence || !validateEvidenceInChunk(evidence, chunkContent)) {
       // Evidence not found or fabricated continuation: reject hallucinated evidence
-      return null;
+      return { isValid: false, failureReason: 'INVALID_EVIDENCE' };
     }
 
     return {
-      sourceEntityId: finalSourceId,
-      targetEntityId: finalTargetId,
-      relationType,
-      description: extracted.description?.trim(),
-      confidence,
-      evidence,
+      isValid: true,
+      validated: {
+        sourceEntityId: finalSourceId,
+        targetEntityId: finalTargetId,
+        relationType,
+        description: extracted.description?.trim(),
+        confidence,
+        evidence,
+      },
     };
+  }
+
+  /**
+   * Validates and prepares an extracted relation against chunk-resolved entities.
+   * Throws an error or returns null if the relation is invalid (e.g. self-loop, missing endpoint).
+   */
+  public validate(
+    extracted: ExtractedRelation,
+    entityMap: Map<string, string>, // Map of normalized entity name -> resolved entity ID
+    chunkContent: string,
+  ): ValidatedRelation | null {
+    const details = this.validateWithDetails(extracted, entityMap, chunkContent);
+    return details.isValid && details.validated ? details.validated : null;
   }
 
   /**

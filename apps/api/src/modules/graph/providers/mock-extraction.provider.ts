@@ -123,6 +123,17 @@ export class MockExtractionProvider implements IKnowledgeExtractionProvider {
       { name: 'HNSW', type: 'CONCEPT', aliases: ['hierarchical-navigable-small-world'] },
       { name: 'BM25', type: 'CONCEPT', aliases: ['best-matching-25'] },
       { name: 'B-Tree', type: 'CONCEPT', aliases: ['btree'] },
+      { name: 'Apache Kafka', type: 'TECHNOLOGY', aliases: ['Kafka'] },
+      { name: 'Microservices', type: 'CONCEPT', aliases: ['micro-services'] },
+      { name: 'OpenAI', type: 'ORGANIZATION', aliases: ['open-ai'] },
+      { name: 'San Francisco', type: 'LOCATION', aliases: ['sf'] },
+      { name: 'Sam Altman', type: 'PERSON', aliases: ['altman'] },
+      { name: 'ChatGPT', type: 'PRODUCT', aliases: ['chat-gpt'] },
+      { name: 'Anthropic', type: 'ORGANIZATION', aliases: ['anthropic-ai'] },
+      { name: 'Dario Amodei', type: 'PERSON', aliases: ['amodei'] },
+      { name: 'Claude', type: 'PRODUCT', aliases: ['claude-ai'] },
+      { name: 'Linux', type: 'TECHNOLOGY', aliases: ['linux-os'] },
+      { name: 'Microsoft', type: 'ORGANIZATION', aliases: ['msft'] },
     ];
 
     const foundEntities: any[] = [];
@@ -155,6 +166,14 @@ export class MockExtractionProvider implements IKnowledgeExtractionProvider {
       { src: 'Node.js', tgt: 'V8 Engine', type: 'EMBEDS' },
       { src: 'V8 Engine', tgt: 'C++', type: 'IMPLEMENTED_IN' },
       { src: 'Kubernetes', tgt: 'Docker', type: 'ORCHESTRATES' },
+      { src: 'Microservices', tgt: 'Apache Kafka', type: 'USES' },
+      { src: 'OpenAI', tgt: 'San Francisco', type: 'LOCATED_IN' },
+      { src: 'Sam Altman', tgt: 'OpenAI', type: 'WORKS_FOR' },
+      { src: 'OpenAI', tgt: 'ChatGPT', type: 'DEVELOPED' },
+      { src: 'Dario Amodei', tgt: 'Anthropic', type: 'WORKS_FOR' },
+      { src: 'Anthropic', tgt: 'Claude', type: 'PRODUCES' },
+      { src: 'Microsoft', tgt: 'TypeScript', type: 'DEVELOPED' },
+      { src: 'TypeScript', tgt: 'Node.js', type: 'USES' },
     ];
 
     const sentences = text.split(/(?<=[.?!])\s+/);

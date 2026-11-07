@@ -730,6 +730,21 @@ export interface GraphExtractionJobPayload {
   forceReextract?: boolean;
 }
 
+export interface ExtractionValidationFailures {
+  unresolvedEndpoints: number;
+  selfLoops: number;
+  unsupportedRelationType: number;
+  lowConfidence: number;
+  invalidEvidence: number;
+}
+
+export interface ExtractionDiagnostics {
+  provider: string;
+  model?: string;
+  validationFailures: ExtractionValidationFailures;
+  retryCount?: number;
+}
+
 export interface ChunkExtractionResult {
   chunkId: string;
   documentId: string;
@@ -741,6 +756,7 @@ export interface ChunkExtractionResult {
   relationsPersisted: number;
   evidenceCreated: number;
   durationMs: number;
+  diagnostics?: ExtractionDiagnostics;
 }
 
 export interface DocumentGraphExtractionResult {
@@ -754,4 +770,9 @@ export interface DocumentGraphExtractionResult {
   status: 'COMPLETED' | 'PARTIAL' | 'FAILED';
   durationMs: number;
   errors?: string[];
+  diagnostics?: {
+    provider: string;
+    model?: string;
+    totalValidationFailures: ExtractionValidationFailures;
+  };
 }

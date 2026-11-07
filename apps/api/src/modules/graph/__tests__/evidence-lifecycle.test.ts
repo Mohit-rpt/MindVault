@@ -248,8 +248,7 @@ describe('Phase 6.1: Evidence Lifecycle & Weight Synchronization Integration Tes
     });
     expect(evCount).toBe(0);
 
-    // Behavior when losing all evidence: relation is preserved and weight = max(1, 0) = 1.0
-    // Strictly respects check constraint chk_relation_weight_positive (weight > 0.0)
+    // Phase 6.3: Unsupported relationships must not survive evidence deletion when no valid evidence remains
     const relAfterAllDeleted = await prisma.graphRelation.findUnique({
       where: {
         workspaceId_id: {
@@ -258,7 +257,6 @@ describe('Phase 6.1: Evidence Lifecycle & Weight Synchronization Integration Tes
         },
       },
     });
-    expect(relAfterAllDeleted).not.toBeNull();
-    expect(relAfterAllDeleted?.weight).toBe(1.0);
+    expect(relAfterAllDeleted).toBeNull();
   });
 });

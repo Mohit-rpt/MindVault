@@ -116,4 +116,91 @@ export const EXTRACTION_EVAL_DATASET: EvalScenario[] = [
       { sourceEntity: 'Kubernetes', targetEntity: 'Docker', relationType: 'ORCHESTRATES' },
     ],
   },
+  {
+    id: 'eval_06_event_driven_architecture',
+    name: 'Apache Kafka Event Streaming',
+    chunkText:
+      'Apache Kafka is an event streaming platform used for building real-time data pipelines. ' +
+      'Microservices publish event messages to Kafka topics. ' +
+      'Kafka persists partitioned commit logs across clustered nodes.',
+    expectedEntities: [
+      { name: 'Apache Kafka', entityType: 'TECHNOLOGY', aliases: ['Kafka'] },
+      { name: 'Microservices', entityType: 'CONCEPT' },
+    ],
+    expectedRelations: [
+      { sourceEntity: 'Microservices', targetEntity: 'Apache Kafka', relationType: 'USES' },
+    ],
+  },
+  {
+    id: 'eval_07_general_knowledge_org',
+    name: 'OpenAI and Leadership',
+    chunkText:
+      'OpenAI is an artificial intelligence research organization headquartered in San Francisco. ' +
+      'Sam Altman serves as the Chief Executive Officer of OpenAI. ' +
+      'OpenAI developed ChatGPT to provide conversational AI capabilities.',
+    expectedEntities: [
+      { name: 'OpenAI', entityType: 'ORGANIZATION' },
+      { name: 'San Francisco', entityType: 'LOCATION' },
+      { name: 'Sam Altman', entityType: 'PERSON' },
+      { name: 'ChatGPT', entityType: 'PRODUCT' },
+    ],
+    expectedRelations: [
+      { sourceEntity: 'OpenAI', targetEntity: 'San Francisco', relationType: 'LOCATED_IN' },
+      { sourceEntity: 'Sam Altman', targetEntity: 'OpenAI', relationType: 'WORKS_FOR' },
+      { sourceEntity: 'OpenAI', targetEntity: 'ChatGPT', relationType: 'DEVELOPED' },
+    ],
+  },
+  {
+    id: 'eval_08_organizational_hierarchy',
+    name: 'Anthropic and Model Development',
+    chunkText:
+      'Anthropic is an AI safety and research public benefit corporation. ' +
+      'Dario Amodei works for Anthropic as its Chief Executive Officer. ' +
+      'Anthropic produces Claude, a suite of foundation language models.',
+    expectedEntities: [
+      { name: 'Anthropic', entityType: 'ORGANIZATION' },
+      { name: 'Dario Amodei', entityType: 'PERSON' },
+      { name: 'Claude', entityType: 'PRODUCT' },
+    ],
+    expectedRelations: [
+      { sourceEntity: 'Dario Amodei', targetEntity: 'Anthropic', relationType: 'WORKS_FOR' },
+      { sourceEntity: 'Anthropic', targetEntity: 'Claude', relationType: 'PRODUCES' },
+    ],
+  },
+  {
+    id: 'eval_09_ambiguous_statements',
+    name: 'Ambiguous Pronoun References',
+    chunkText:
+      'The company announced that the engineers completed the maintenance window yesterday. ' +
+      'They claimed it was faster than previous quarters without identifying the product. ' +
+      'Only the Linux servers in the primary datacenter experienced scheduled downtime.',
+    expectedEntities: [{ name: 'Linux', entityType: 'TECHNOLOGY' }],
+    expectedRelations: [],
+  },
+  {
+    id: 'eval_10_unsupported_claims_negative',
+    name: 'Unsupported Negative Control',
+    chunkText:
+      'Speculation circulates across online forums regarding prospective corporate mergers. ' +
+      'However, no formal contractual relations or technological integrations exist between the entities. ' +
+      'Unsubstantiated reports should not be treated as verifiable facts.',
+    expectedEntities: [],
+    expectedRelations: [],
+  },
+  {
+    id: 'eval_11_multidoc_corroboration',
+    name: 'Cross-Document Corroboration: TypeScript on Node.js',
+    chunkText:
+      'TypeScript is an open-source programming language developed by Microsoft. ' +
+      'Enterprise backend systems execute TypeScript code compiled for the Node.js runtime environment.',
+    expectedEntities: [
+      { name: 'TypeScript', entityType: 'TECHNOLOGY', aliases: ['ts'] },
+      { name: 'Microsoft', entityType: 'ORGANIZATION' },
+      { name: 'Node.js', entityType: 'TECHNOLOGY', aliases: ['nodejs'] },
+    ],
+    expectedRelations: [
+      { sourceEntity: 'Microsoft', targetEntity: 'TypeScript', relationType: 'DEVELOPED' },
+      { sourceEntity: 'TypeScript', targetEntity: 'Node.js', relationType: 'USES' },
+    ],
+  },
 ];

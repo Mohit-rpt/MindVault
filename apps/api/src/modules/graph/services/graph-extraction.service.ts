@@ -17,7 +17,15 @@ import {
   KnowledgeExtractionResponseSchema,
   type ChunkExtractionResult,
   type DocumentGraphExtractionResult,
+  type ExtractionValidationFailures,
 } from '@mindvault/shared';
+
+function sanitizeErrorMessage(msg?: string): string {
+  if (!msg) return '';
+  return msg
+    .replace(/bearer\s+[a-zA-Z0-9_\-.]+/gi, 'Bearer [REDACTED]')
+    .replace(/(?:password|secret|key|token)=[^&\s]+/gi, '$1=[REDACTED]');
+}
 
 export interface GraphExtractionServiceOptions {
   graphRepo?: IGraphRepository;
@@ -107,25 +115,43 @@ export class GraphExtractionService {
           confidence: extractedEntity.confidence,
         });
         mentionsCreated++;
-      } catch (err) {
+      } catch (err: any) {
         console.warn(
           `[GraphExtractionService] Failed to resolve entity "${extractedEntity.name}":`,
-          err,
+          sanitizeErrorMessage(err?.message || 'Unknown error'),
         );
       }
     }
 
+    const validationFailures: ExtractionValidationFailures = {
+      unresolvedEndpoints: 0,
+      selfLoops: 0,
+      unsupportedRelationType: 0,
+      lowConfidence: 0,
+      invalidEvidence: 0,
+    };
+
     // 5. Validate & Persist Relations with Evidence
     for (const extractedRelation of validatedSchema.relations) {
-      const validatedRelation = this.relationResolver.validate(
+      const valResult = this.relationResolver.validateWithDetails(
         extractedRelation,
         entityIdMap,
         content,
       );
 
-      if (!validatedRelation) {
+      if (!valResult.isValid || !valResult.validated) {
+        if (valResult.failureReason === 'UNRESOLVED_ENDPOINT')
+          validationFailures.unresolvedEndpoints++;
+        else if (valResult.failureReason === 'SELF_LOOP') validationFailures.selfLoops++;
+        else if (valResult.failureReason === 'UNSUPPORTED_RELATION_TYPE')
+          validationFailures.unsupportedRelationType++;
+        else if (valResult.failureReason === 'LOW_CONFIDENCE') validationFailures.lowConfidence++;
+        else if (valResult.failureReason === 'INVALID_EVIDENCE')
+          validationFailures.invalidEvidence++;
         continue;
       }
+
+      const validatedRelation = valResult.validated;
 
       try {
         const { evidenceId } = await this.relationResolver.resolveAndPersist(
@@ -138,8 +164,11 @@ export class GraphExtractionService {
         if (evidenceId) {
           evidenceCreated++;
         }
-      } catch (err) {
-        console.warn(`[GraphExtractionService] Failed to persist relation:`, err);
+      } catch (err: any) {
+        console.warn(
+          `[GraphExtractionService] Failed to persist relation:`,
+          sanitizeErrorMessage(err?.message || 'Unknown error'),
+        );
       }
     }
 
@@ -156,6 +185,11 @@ export class GraphExtractionService {
       relationsPersisted,
       evidenceCreated,
       durationMs,
+      diagnostics: {
+        provider: this.provider.providerName,
+        model: (this.provider as any).modelName,
+        validationFailures,
+      },
     };
   }
 
@@ -194,6 +228,13 @@ export class GraphExtractionService {
     let totalRelations = 0;
     let totalEvidence = 0;
     const errors: string[] = [];
+    const aggregatedFailures: ExtractionValidationFailures = {
+      unresolvedEndpoints: 0,
+      selfLoops: 0,
+      unsupportedRelationType: 0,
+      lowConfidence: 0,
+      invalidEvidence: 0,
+    };
 
     // 2. Process chunks
     for (const chunk of document.chunks) {
@@ -214,8 +255,21 @@ export class GraphExtractionService {
         totalEntities += result.entitiesResolved;
         totalRelations += result.relationsPersisted;
         totalEvidence += result.evidenceCreated;
+
+        if (result.diagnostics?.validationFailures) {
+          aggregatedFailures.unresolvedEndpoints +=
+            result.diagnostics.validationFailures.unresolvedEndpoints;
+          aggregatedFailures.selfLoops += result.diagnostics.validationFailures.selfLoops;
+          aggregatedFailures.unsupportedRelationType +=
+            result.diagnostics.validationFailures.unsupportedRelationType;
+          aggregatedFailures.lowConfidence += result.diagnostics.validationFailures.lowConfidence;
+          aggregatedFailures.invalidEvidence +=
+            result.diagnostics.validationFailures.invalidEvidence;
+        }
       } catch (err: any) {
-        errors.push(`Chunk ${chunk.id}: ${err.message}`);
+        errors.push(
+          `Chunk ${chunk.id}: ${sanitizeErrorMessage(err?.message || 'Processing error')}`,
+        );
       }
     }
 
@@ -254,6 +308,11 @@ export class GraphExtractionService {
       status,
       durationMs,
       errors: errors.length > 0 ? errors : undefined,
+      diagnostics: {
+        provider: this.provider.providerName,
+        model: (this.provider as any).modelName,
+        totalValidationFailures: aggregatedFailures,
+      },
     };
   }
 }

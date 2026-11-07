@@ -10,7 +10,7 @@ describe('Phase 6.1: Knowledge Graph Extraction Evaluation Suite', () => {
 
     const metrics = await runner.runEvaluation(EXTRACTION_EVAL_DATASET);
 
-    expect(metrics.totalScenarios).toBe(5);
+    expect(metrics.totalScenarios).toBe(11);
 
     // Entity Metrics
     expect(metrics.entityMetrics.truePositives).toBeGreaterThan(0);
