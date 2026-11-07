@@ -212,6 +212,23 @@ export class GraphRepository implements IGraphRepository {
     };
   }
 
+  async findRelationById(workspaceId: string, id: string): Promise<GraphRelationRecord | null> {
+    const relation = await prisma.graphRelation.findUnique({
+      where: {
+        workspaceId_id: {
+          workspaceId,
+          id,
+        },
+      },
+    });
+
+    if (!relation) return null;
+    return {
+      ...relation,
+      metadata: relation.metadata as Record<string, unknown>,
+    };
+  }
+
   async upsertRelation(input: CreateRelationInput): Promise<GraphRelationRecord> {
     const existing = await this.findRelationByEndpoints(
       input.workspaceId,
@@ -221,7 +238,8 @@ export class GraphRepository implements IGraphRepository {
     );
 
     if (existing) {
-      const incrementWeight = input.weight ?? 1.0;
+      // Weight is synchronized from unique relation_evidence rows via trigger trg_relation_evidence_sync_weight.
+      // Confidence is monotonically non-decreasing.
       const updated = await prisma.graphRelation.update({
         where: {
           workspaceId_id: {
@@ -230,7 +248,6 @@ export class GraphRepository implements IGraphRepository {
           },
         },
         data: {
-          weight: existing.weight + incrementWeight,
           confidence: Math.max(existing.confidence, input.confidence ?? 0.8),
           description: input.description || existing.description,
           metadata: {
@@ -247,7 +264,10 @@ export class GraphRepository implements IGraphRepository {
     }
 
     try {
-      return await this.createRelation(input);
+      return await this.createRelation({
+        ...input,
+        weight: input.weight ?? 1.0,
+      });
     } catch (err: any) {
       if (err.code === 'P2002' || err.meta?.code === '23505') {
         const recheck = await this.findRelationByEndpoints(
@@ -257,7 +277,6 @@ export class GraphRepository implements IGraphRepository {
           input.relationType,
         );
         if (recheck) {
-          const incrementWeight = input.weight ?? 1.0;
           const updated = await prisma.graphRelation.update({
             where: {
               workspaceId_id: {
@@ -266,7 +285,6 @@ export class GraphRepository implements IGraphRepository {
               },
             },
             data: {
-              weight: recheck.weight + incrementWeight,
               confidence: Math.max(recheck.confidence, input.confidence ?? 0.8),
               description: input.description || recheck.description,
             },

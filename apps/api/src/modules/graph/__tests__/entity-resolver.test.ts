@@ -159,4 +159,86 @@ describe('Phase 6.1: EntityResolver Integration Tests', () => {
     });
     expect(totalInDb).toBe(1);
   });
+
+  it('persists all 9 approved entity types successfully in PostgreSQL', async () => {
+    const approvedTypes = [
+      'CONCEPT',
+      'TECHNOLOGY',
+      'ORGANIZATION',
+      'PERSON',
+      'LOCATION',
+      'EVENT',
+      'METRIC',
+      'PRODUCT',
+      'CUSTOM',
+    ] as const;
+
+    for (const type of approvedTypes) {
+      const termName = `${type} Entity ${Date.now()}`;
+      const result = await resolver.resolve(wsAlphaId, {
+        name: termName,
+        entityType: type,
+        confidence: 0.9,
+        aliases: [],
+      });
+
+      expect(result.isNew).toBe(true);
+      expect(result.entity.entityType).toBe(type);
+
+      const inDb = await prisma.graphEntity.findUnique({
+        where: {
+          workspaceId_id: {
+            workspaceId: wsAlphaId,
+            id: result.entity.id,
+          },
+        },
+      });
+      expect(inDb?.entityType).toBe(type);
+    }
+  });
+
+  it('maps legacy OTHER entity type deterministically to CUSTOM', async () => {
+    const legacyTerm = `Legacy Other Entity ${Date.now()}`;
+    const result = await resolver.resolve(wsAlphaId, {
+      name: legacyTerm,
+      entityType: 'OTHER' as any,
+      confidence: 0.85,
+      aliases: [],
+    });
+
+    expect(result.isNew).toBe(true);
+    expect(result.entity.entityType).toBe('CUSTOM');
+
+    const inDb = await prisma.graphEntity.findUnique({
+      where: {
+        workspaceId_id: {
+          workspaceId: wsAlphaId,
+          id: result.entity.id,
+        },
+      },
+    });
+    expect(inDb?.entityType).toBe('CUSTOM');
+  });
+
+  it('rejects arbitrary invalid entity types and NEVER silently defaults to CONCEPT', async () => {
+    const invalidTerm = `Invalid Type Entity ${Date.now()}`;
+
+    await expect(
+      resolver.resolve(wsAlphaId, {
+        name: invalidTerm,
+        entityType: 'ANIMAL' as any,
+        confidence: 0.85,
+        aliases: [],
+      }),
+    ).rejects.toThrow(/Invalid entity type: "ANIMAL"/);
+
+    // Verify it was NOT saved as CONCEPT
+    const inDb = await prisma.graphEntity.findFirst({
+      where: {
+        workspaceId: wsAlphaId,
+        canonicalName: invalidTerm,
+      },
+    });
+    expect(inDb).toBeNull();
+  });
 });

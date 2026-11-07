@@ -12,11 +12,16 @@
 
 import { EXTRACTION_EVAL_DATASET, type EvalScenario } from './graph-extraction.eval.dataset.js';
 import type { IKnowledgeExtractionProvider } from '../providers/extraction-provider.interface.js';
-import { createExtractionProvider } from '../providers/provider.factory.js';
+import { validateEvidenceInChunk } from '../resolvers/relation.resolver.js';
+import { MockExtractionProvider } from '../providers/mock-extraction.provider.js';
+import { OllamaExtractionProvider } from '../providers/ollama-extraction.provider.js';
 import { EntityNormalizer } from '../normalizers/entity.normalizer.js';
 import { KnowledgeExtractionResponseSchema } from '@mindvault/shared';
 
 export interface EvaluationMetrics {
+  provider: string;
+  modelName?: string;
+  isMock: boolean;
   totalScenarios: number;
   entityMetrics: {
     precision: number;
@@ -80,7 +85,7 @@ export class GraphExtractionEvalRunner {
         continue;
       }
 
-      totalLatencyMs += Math.round(performance.now() - startTime);
+      totalLatencyMs += performance.now() - startTime;
 
       const parsed = KnowledgeExtractionResponseSchema.safeParse(rawOutput);
       if (!parsed.success) {
@@ -171,13 +176,10 @@ export class GraphExtractionEvalRunner {
           relationFP++;
         }
 
-        // Provenance verification
+        // Provenance verification: strict full-sentence grounded substring matching
         if (rel.evidence) {
           totalEvidenceChecked++;
-          const normChunk = scenario.chunkText.toLowerCase().replace(/\s+/g, ' ');
-          const normEv = rel.evidence.toLowerCase().replace(/\s+/g, ' ');
-          const sub = normEv.slice(0, Math.min(normEv.length, 25));
-          if (normChunk.includes(sub)) {
+          if (validateEvidenceInChunk(rel.evidence, scenario.chunkText)) {
             validEvidenceMatches++;
           }
         }
@@ -217,7 +219,15 @@ export class GraphExtractionEvalRunner {
         ? (2 * (relationPrecision * relationRecall)) / (relationPrecision + relationRecall)
         : 0;
 
+    const isMock = this.provider.providerName === 'mock';
+    const modelName =
+      (this.provider as any).modelName || (isMock ? 'heuristic-mock-catalog' : undefined);
+    const validScenarios = dataset.length - invalidOutputs;
+
     return {
+      provider: this.provider.providerName,
+      modelName,
+      isMock,
       totalScenarios: dataset.length,
       entityMetrics: {
         precision: Math.round(entityPrecision * 1000) / 1000,
@@ -250,10 +260,7 @@ export class GraphExtractionEvalRunner {
           totalEvidenceChecked > 0
             ? Math.round((validEvidenceMatches / totalEvidenceChecked) * 1000) / 1000
             : 1.0,
-        avgLatencyMs:
-          dataset.length - invalidOutputs > 0
-            ? Math.round(totalLatencyMs / (dataset.length - invalidOutputs))
-            : 0,
+        avgLatencyMs: validScenarios > 0 ? Number((totalLatencyMs / validScenarios).toFixed(2)) : 0,
       },
     };
   }
@@ -264,10 +271,36 @@ if (
   process.argv[1]?.endsWith('graph-extraction.eval.runner.ts') ||
   process.argv[1]?.endsWith('graph-extraction.eval.runner.js')
 ) {
-  const provider = createExtractionProvider('mock');
-  const runner = new GraphExtractionEvalRunner(provider);
-  runner.runEvaluation().then((metrics) => {
-    console.log('\n📊 === MindVault Knowledge Graph Extraction Evaluation Report ===');
-    console.log(JSON.stringify(metrics, null, 2));
-  });
+  (async () => {
+    // 1. Run deterministic mock benchmark
+    const mockProvider = new MockExtractionProvider();
+    const mockRunner = new GraphExtractionEvalRunner(mockProvider);
+    const mockMetrics = await mockRunner.runEvaluation();
+    console.log('\n📊 === [MOCK PROVIDER BENCHMARK] Deterministic Offline Test Suite ===');
+    console.log(
+      'NOTE: Measures code path reliability and regression coverage. Not an evaluation of actual LLM reasoning.',
+    );
+    console.log(JSON.stringify(mockMetrics, null, 2));
+
+    // 2. Opt-in Live Model Evaluation
+    const runLive =
+      process.argv.includes('--live-ollama') || process.env.LIVE_OLLAMA_EVAL === 'true';
+    if (runLive) {
+      console.log('\n🚀 === [LIVE LLM BENCHMARK] Ollama Model Extraction Evaluation ===');
+      const ollamaProvider = new OllamaExtractionProvider();
+      const health = await ollamaProvider.healthCheck();
+      if (!health.ok) {
+        console.warn(
+          `[WARN] Ollama service not reachable: ${health.message}. Skipping live evaluation.`,
+        );
+        return;
+      }
+      console.log(
+        `Evaluating Live Ollama Model: ${ollamaProvider.modelName} (think=${ollamaProvider.think}, temp=${ollamaProvider.temperature})...`,
+      );
+      const liveRunner = new GraphExtractionEvalRunner(ollamaProvider);
+      const liveMetrics = await liveRunner.runEvaluation();
+      console.log(JSON.stringify(liveMetrics, null, 2));
+    }
+  })();
 }

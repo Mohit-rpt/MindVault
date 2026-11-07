@@ -98,6 +98,7 @@ export interface IGraphRepository {
   createEvidence(input: CreateEvidenceInput): Promise<{ id: string }>;
   deleteEntity(workspaceId: string, id: string): Promise<boolean>;
   findRelations(workspaceId: string, entityId: string): Promise<GraphRelationRecord[]>;
+  findRelationById(workspaceId: string, id: string): Promise<GraphRelationRecord | null>;
   findRelationByEndpoints(
     workspaceId: string,
     sourceEntityId: string,

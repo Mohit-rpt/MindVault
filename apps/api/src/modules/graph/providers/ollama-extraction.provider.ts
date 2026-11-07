@@ -20,14 +20,18 @@ import {
 export interface OllamaExtractionOptions {
   baseUrl?: string;
   modelName?: string;
+  think?: boolean;
+  temperature?: number;
   timeoutMs?: number;
 }
 
 export class OllamaExtractionProvider implements IKnowledgeExtractionProvider {
   public readonly providerName = 'ollama';
-  private readonly baseUrl: string;
-  private readonly modelName: string;
-  private readonly timeoutMs: number;
+  public readonly baseUrl: string;
+  public readonly modelName: string;
+  public readonly think: boolean;
+  public readonly temperature: number;
+  public readonly timeoutMs: number;
 
   constructor(options?: OllamaExtractionOptions) {
     this.baseUrl = (
@@ -35,8 +39,23 @@ export class OllamaExtractionProvider implements IKnowledgeExtractionProvider {
       process.env.OLLAMA_BASE_URL ||
       'http://localhost:11434'
     ).replace(/\/$/, '');
-    this.modelName = options?.modelName || process.env.OLLAMA_GENERATION_MODEL || 'qwen3:0.6b';
-    this.timeoutMs = options?.timeoutMs || parseInt(process.env.LLM_REQUEST_TIMEOUT || '60000', 10);
+    this.modelName =
+      options?.modelName ||
+      process.env.OLLAMA_EXTRACTION_MODEL ||
+      process.env.OLLAMA_GENERATION_MODEL ||
+      'qwen3:0.6b';
+    this.think =
+      options?.think !== undefined ? options.think : process.env.OLLAMA_EXTRACTION_THINK === 'true';
+    this.temperature =
+      options?.temperature !== undefined
+        ? options.temperature
+        : parseFloat(process.env.OLLAMA_EXTRACTION_TEMPERATURE || '0.0');
+    this.timeoutMs =
+      options?.timeoutMs ||
+      parseInt(
+        process.env.OLLAMA_EXTRACTION_TIMEOUT_MS || process.env.LLM_REQUEST_TIMEOUT || '60000',
+        10,
+      );
   }
 
   public async extract(
@@ -60,8 +79,9 @@ export class OllamaExtractionProvider implements IKnowledgeExtractionProvider {
           system: EXTRACTION_SYSTEM_PROMPT,
           format: 'json',
           stream: false,
+          think: this.think,
           options: {
-            temperature: 0.1,
+            temperature: this.temperature,
             top_p: 0.9,
           },
         }),

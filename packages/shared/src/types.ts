@@ -684,13 +684,15 @@ export type ConversationStreamEvent =
 // ---------------------------------------------------------------------------
 
 export const EntityTypeEnum = z.enum([
-  'TECHNOLOGY',
   'CONCEPT',
-  'PERSON',
+  'TECHNOLOGY',
   'ORGANIZATION',
-  'PRODUCT',
+  'PERSON',
   'LOCATION',
-  'OTHER',
+  'EVENT',
+  'METRIC',
+  'PRODUCT',
+  'CUSTOM',
 ]);
 export type EntityType = z.infer<typeof EntityTypeEnum>;
 

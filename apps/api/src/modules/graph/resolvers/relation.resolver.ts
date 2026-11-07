@@ -22,6 +22,50 @@ export interface ValidatedRelation {
   evidence: string;
 }
 
+/**
+ * Strict evidence validator for provenance tracking.
+ * - Applies Unicode NFKC decomposition/composition.
+ * - Safely strips enclosing outer quotes ("...", '...', «...», “...”).
+ * - Normalizes whitespace sequences (\s+, NBSP, zero-width spaces -> single space).
+ * - Checks exact full normalized substring match.
+ * - Allows explicitly defined trailing punctuation variations (. , ! ? ; :).
+ * - Rejects partial-prefix matches and fabricated continuations without exception.
+ */
+export function validateEvidenceInChunk(
+  rawEvidence?: string | null,
+  rawChunk?: string | null,
+): boolean {
+  if (!rawEvidence || !rawChunk) return false;
+
+  // 1. Unicode NFKC normalization
+  let ev = rawEvidence.normalize('NFKC').trim();
+  const chunk = rawChunk.normalize('NFKC').trim();
+
+  // 2. Safe outer quote removal on evidence
+  ev = ev.replace(/^["'`«»“”]+|["'`«»“”]+$/g, '').trim();
+  if (ev.length < 3) return false;
+
+  // 3. Lowercase & Whitespace normalization (\s+ -> single space)
+  const normChunk = chunk.toLowerCase().replace(/[\s\u00A0\u200B]+/g, ' ');
+  const normEv = ev.toLowerCase().replace(/[\s\u00A0\u200B]+/g, ' ');
+
+  // 4. Exact full normalized substring match
+  if (normChunk.includes(normEv)) {
+    return true;
+  }
+
+  // 5. Allowed trailing punctuation variations (. , ! ? ; :)
+  const evWithoutTrailingPunct = normEv.replace(/[.,!?;:]+$/, '').trim();
+  if (evWithoutTrailingPunct.length >= 3) {
+    if (normChunk.includes(evWithoutTrailingPunct)) {
+      return true;
+    }
+  }
+
+  // All partial prefix-only matches or fabricated continuations are rejected
+  return false;
+}
+
 export class RelationResolver {
   constructor(private readonly graphRepo: IGraphRepository) {}
 
@@ -61,22 +105,11 @@ export class RelationResolver {
       return null;
     }
 
-    // 5. Evidence validation: Ensure evidence is present and non-empty
+    // 5. Strict evidence validation: Ensure entire evidence sentence/clause is grounded in chunk
     const evidence = extracted.evidence?.trim();
-    if (!evidence || evidence.length < 3) {
+    if (!evidence || !validateEvidenceInChunk(evidence, chunkContent)) {
+      // Evidence not found or fabricated continuation: reject hallucinated evidence
       return null;
-    }
-
-    // Verify evidence text appears in the chunk (case-insensitive substring check)
-    const normChunk = chunkContent.toLowerCase().replace(/\s+/g, ' ');
-    const normEv = evidence.toLowerCase().replace(/\s+/g, ' ');
-    if (!normChunk.includes(normEv)) {
-      // If full evidence sentence doesn't match verbatim, check if a significant 20-char substring matches
-      const sub = normEv.slice(0, Math.min(normEv.length, 30));
-      if (!normChunk.includes(sub)) {
-        // Evidence not found in chunk: reject hallucinated evidence
-        return null;
-      }
     }
 
     return {
@@ -98,7 +131,7 @@ export class RelationResolver {
     chunkId: string,
     validated: ValidatedRelation,
   ): Promise<{ relation: GraphRelationRecord; evidenceId: string }> {
-    // 1. Upsert relation (increments weight, updates confidence)
+    // 1. Upsert relation (maintains non-decreasing confidence, initial weight 1.0)
     const relation = await this.graphRepo.upsertRelation({
       workspaceId,
       sourceEntityId: validated.sourceEntityId,
@@ -110,6 +143,7 @@ export class RelationResolver {
     });
 
     // 2. Idempotently record supporting evidence for this relation
+    // The database trigger automatically keeps weight = max(1, count(distinct chunkId))
     const evidence = await this.graphRepo.createEvidenceIdempotent({
       workspaceId,
       relationId: relation.id,
@@ -119,6 +153,9 @@ export class RelationResolver {
       confidence: validated.confidence,
     });
 
-    return { relation, evidenceId: evidence.id };
+    // 3. Re-read the relation to return the trigger-synchronized authoritative weight
+    const refreshed = await this.graphRepo.findRelationById(workspaceId, relation.id);
+
+    return { relation: refreshed || relation, evidenceId: evidence.id };
   }
 }

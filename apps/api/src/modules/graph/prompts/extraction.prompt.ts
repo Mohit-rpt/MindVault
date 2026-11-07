@@ -18,7 +18,7 @@ EXTRACTION INSTRUCTIONS:
    - Extract only high-value, domain-specific concepts, technologies, people, organizations, products, and metrics.
    - Discard generic words ("information", "system", "data", "file", "item", "example").
    - Assign one of the valid entity types:
-     TECHNOLOGY, CONCEPT, PERSON, ORGANIZATION, PRODUCT, LOCATION, OTHER
+     CONCEPT, TECHNOLOGY, ORGANIZATION, PERSON, LOCATION, EVENT, METRIC, PRODUCT, CUSTOM
    - Detect abbreviations, acronyms, or alternate names and include them in the "aliases" array.
    - Confidence must be a float between 0.0 and 1.0.
 

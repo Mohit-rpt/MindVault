@@ -234,12 +234,15 @@ model ChatMessage {
 // =========================================================================
 
 enum EntityType {
-  TECHNOLOGY
   CONCEPT
-  PERSON
+  TECHNOLOGY
   ORGANIZATION
-  PRODUCT
+  PERSON
   LOCATION
+  EVENT
+  METRIC
+  PRODUCT
+  CUSTOM
   OTHER
 }
 

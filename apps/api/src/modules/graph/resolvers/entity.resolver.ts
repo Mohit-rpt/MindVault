@@ -13,7 +13,40 @@ import type {
   GraphEntityRecord,
 } from '../repositories/graph.repository.interface.js';
 import { EntityNormalizer } from '../normalizers/entity.normalizer.js';
-import type { ExtractedEntity } from '@mindvault/shared';
+import type { ExtractedEntity, EntityType } from '@mindvault/shared';
+
+const VALID_ENTITY_TYPES = new Set<string>([
+  'CONCEPT',
+  'TECHNOLOGY',
+  'ORGANIZATION',
+  'PERSON',
+  'LOCATION',
+  'EVENT',
+  'METRIC',
+  'PRODUCT',
+  'CUSTOM',
+]);
+
+/**
+ * Validates and maps an extracted entity type string to a supported taxonomy value.
+ * - Maps legacy 'OTHER' to 'CUSTOM'.
+ * - Rejects arbitrary invalid types by throwing an error (never silently defaults to CONCEPT).
+ */
+export function resolveEntityType(rawType: string): EntityType {
+  if (!rawType || typeof rawType !== 'string') {
+    throw new Error(`Invalid entity type: "${rawType}". Entity type must be a non-empty string.`);
+  }
+  const upper = rawType.trim().toUpperCase();
+  if (upper === 'OTHER') {
+    return 'CUSTOM';
+  }
+  if (VALID_ENTITY_TYPES.has(upper)) {
+    return upper as EntityType;
+  }
+  throw new Error(
+    `Invalid entity type: "${rawType}". Expected one of: ${Array.from(VALID_ENTITY_TYPES).join(', ')}`,
+  );
+}
 
 export interface ResolutionResult {
   entity: GraphEntityRecord;
@@ -91,7 +124,7 @@ export class EntityResolver {
         workspaceId,
         canonicalName: rawName.trim(),
         normalizedName,
-        entityType: extracted.entityType,
+        entityType: resolveEntityType(extracted.entityType),
         description: extracted.description,
       });
 

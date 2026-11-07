@@ -20,9 +20,13 @@ export function createExtractionProvider(
     case 'gemini':
       return new GeminiExtractionProvider();
     case 'mock':
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('MockExtractionProvider cannot be used in production environment.');
+      }
       return new MockExtractionProvider();
     case 'ollama':
-    default:
       return new OllamaExtractionProvider();
+    default:
+      throw new Error(`Unsupported graph extraction provider: "${selected}"`);
   }
 }
