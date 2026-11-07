@@ -98,4 +98,23 @@ export interface IGraphRepository {
   createEvidence(input: CreateEvidenceInput): Promise<{ id: string }>;
   deleteEntity(workspaceId: string, id: string): Promise<boolean>;
   findRelations(workspaceId: string, entityId: string): Promise<GraphRelationRecord[]>;
+  findRelationByEndpoints(
+    workspaceId: string,
+    sourceEntityId: string,
+    targetEntityId: string,
+    relationType: string,
+  ): Promise<GraphRelationRecord | null>;
+  upsertRelation(input: CreateRelationInput): Promise<GraphRelationRecord>;
+  findMention(
+    workspaceId: string,
+    chunkId: string,
+    entityId: string,
+  ): Promise<{ id: string } | null>;
+  createMentionIdempotent(input: CreateMentionInput): Promise<{ id: string }>;
+  findEvidence(
+    workspaceId: string,
+    relationId: string,
+    chunkId: string,
+  ): Promise<{ id: string } | null>;
+  createEvidenceIdempotent(input: CreateEvidenceInput): Promise<{ id: string }>;
 }

@@ -21,7 +21,8 @@
     "db:migrate": "prisma migrate deploy --schema=prisma/schema.prisma",
     "retrieval:evaluate": "pnpm --filter @mindvault/api evaluate",
     "rag:evaluate": "pnpm --filter @mindvault/api evaluate:rag",
-    "conversation:evaluate": "pnpm --filter @mindvault/api evaluate:conversation"
+    "conversation:evaluate": "pnpm --filter @mindvault/api evaluate:conversation",
+    "graph:evaluate": "pnpm --filter @mindvault/api evaluate:graph"
   },
   "dependencies": {
     "@prisma/client": "^6.2.1"

@@ -6,6 +6,7 @@ import { DocumentIngestionPipeline } from './modules/ingestion/pipeline.js';
 import { WorkerStorageProvider } from './lib/storage.js';
 import { PrismaWorkerDatabaseService } from './lib/db.js';
 import { createEmbeddingProvider } from './modules/ingestion/embeddings/index.js';
+import { BullMQWorkerGraphQueue } from './lib/graph-queue.js';
 
 export class WorkerService {
   private logger = new Logger('WorkerService');
@@ -37,7 +38,8 @@ export class WorkerService {
       const storage = new WorkerStorageProvider();
       const embeddingProvider = createEmbeddingProvider();
       const db = new PrismaWorkerDatabaseService();
-      this.pipeline = new DocumentIngestionPipeline(storage, embeddingProvider, db);
+      const graphQueue = new BullMQWorkerGraphQueue();
+      this.pipeline = new DocumentIngestionPipeline(storage, embeddingProvider, db, graphQueue);
     }
 
     // In test environment, skip spinning up live BullMQ socket unless requested

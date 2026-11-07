@@ -8,6 +8,8 @@ import { normalizeText } from './normalization/text.normalizer.js';
 import { chunkDocument } from './chunking/chunker.js';
 import { Logger } from '../../utils/logger.js';
 
+import type { IWorkerGraphQueue } from '../../lib/graph-queue.js';
+
 export interface IngestionDatabaseService {
   findDocumentById(id: string): Promise<any>;
   updateDocument(id: string, data: any): Promise<any>;
@@ -21,6 +23,7 @@ export class DocumentIngestionPipeline {
     private storage: DocumentStorageProvider,
     private embeddings: EmbeddingProvider,
     private db: IngestionDatabaseService,
+    private graphQueue?: IWorkerGraphQueue,
   ) {}
 
   public async processDocument(payload: ProcessDocumentJobPayload): Promise<void> {
@@ -148,6 +151,18 @@ export class DocumentIngestionPipeline {
       this.logger.info(
         `Successfully completed ingestion for document ${documentId}: ${chunks.length} chunks embedded and stored.`,
       );
+
+      // 9. Asynchronous Knowledge Graph Extraction Handoff
+      if (this.graphQueue) {
+        try {
+          await this.graphQueue.enqueue({ documentId, workspaceId });
+          this.logger.info(`Enqueued document ${documentId} for knowledge graph extraction`);
+        } catch (err: any) {
+          this.logger.warn(
+            `Failed to enqueue document ${documentId} for graph extraction: ${err.message}`,
+          );
+        }
+      }
     } catch (err: any) {
       this.logger.error(`Document ${documentId} ingestion failed: ${err.message}`, {
         stack: err.stack,

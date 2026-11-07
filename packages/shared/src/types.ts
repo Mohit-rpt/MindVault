@@ -678,3 +678,78 @@ export type ConversationStreamEvent =
       metadata?: Record<string, unknown>;
     }
   | { type: 'error'; message: string; code?: string };
+
+// ---------------------------------------------------------------------------
+// Phase 6: Knowledge Graph & Entity-Relation Extraction Schemas & Contracts
+// ---------------------------------------------------------------------------
+
+export const EntityTypeEnum = z.enum([
+  'TECHNOLOGY',
+  'CONCEPT',
+  'PERSON',
+  'ORGANIZATION',
+  'PRODUCT',
+  'LOCATION',
+  'OTHER',
+]);
+export type EntityType = z.infer<typeof EntityTypeEnum>;
+
+export const ExtractedEntitySchema = z.object({
+  name: z.string().trim().min(1).max(255),
+  entityType: EntityTypeEnum.default('CONCEPT'),
+  description: z.string().trim().max(1000).optional(),
+  aliases: z.array(z.string().trim().min(1).max(255)).default([]),
+  confidence: z.number().min(0.0).max(1.0).default(0.85),
+  sourceText: z.string().trim().max(1000).optional(),
+});
+export type ExtractedEntity = z.infer<typeof ExtractedEntitySchema>;
+
+export const ExtractedRelationSchema = z.object({
+  sourceEntity: z.string().trim().min(1).max(255),
+  targetEntity: z.string().trim().min(1).max(255),
+  relationType: z.string().trim().min(1).max(64).toUpperCase(),
+  description: z.string().trim().max(1000).optional(),
+  confidence: z.number().min(0.0).max(1.0).default(0.8),
+  evidence: z.string().trim().min(1).max(2000),
+});
+export type ExtractedRelation = z.infer<typeof ExtractedRelationSchema>;
+
+export const KnowledgeExtractionResponseSchema = z.object({
+  version: z.string().default('1.0'),
+  entities: z.array(ExtractedEntitySchema).max(50).default([]),
+  relations: z.array(ExtractedRelationSchema).max(100).default([]),
+});
+export type KnowledgeExtractionResponse = z.infer<typeof KnowledgeExtractionResponseSchema>;
+
+export interface GraphExtractionJobPayload {
+  documentId: string;
+  workspaceId: string;
+  chunkId?: string;
+  forceReextract?: boolean;
+}
+
+export interface ChunkExtractionResult {
+  chunkId: string;
+  documentId: string;
+  workspaceId: string;
+  entitiesExtracted: number;
+  entitiesResolved: number;
+  mentionsCreated: number;
+  relationsExtracted: number;
+  relationsPersisted: number;
+  evidenceCreated: number;
+  durationMs: number;
+}
+
+export interface DocumentGraphExtractionResult {
+  documentId: string;
+  workspaceId: string;
+  totalChunks: number;
+  processedChunks: number;
+  totalEntities: number;
+  totalRelations: number;
+  totalEvidence: number;
+  status: 'COMPLETED' | 'PARTIAL' | 'FAILED';
+  durationMs: number;
+  errors?: string[];
+}

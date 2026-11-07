@@ -187,6 +187,155 @@ export class GraphRepository implements IGraphRepository {
       metadata: rel.metadata as Record<string, unknown>,
     }));
   }
+
+  async findRelationByEndpoints(
+    workspaceId: string,
+    sourceEntityId: string,
+    targetEntityId: string,
+    relationType: string,
+  ): Promise<GraphRelationRecord | null> {
+    const relation = await prisma.graphRelation.findUnique({
+      where: {
+        workspaceId_sourceEntityId_targetEntityId_relationType: {
+          workspaceId,
+          sourceEntityId,
+          targetEntityId,
+          relationType,
+        },
+      },
+    });
+
+    if (!relation) return null;
+    return {
+      ...relation,
+      metadata: relation.metadata as Record<string, unknown>,
+    };
+  }
+
+  async upsertRelation(input: CreateRelationInput): Promise<GraphRelationRecord> {
+    const existing = await this.findRelationByEndpoints(
+      input.workspaceId,
+      input.sourceEntityId,
+      input.targetEntityId,
+      input.relationType,
+    );
+
+    if (existing) {
+      const incrementWeight = input.weight ?? 1.0;
+      const updated = await prisma.graphRelation.update({
+        where: {
+          workspaceId_id: {
+            workspaceId: input.workspaceId,
+            id: existing.id,
+          },
+        },
+        data: {
+          weight: existing.weight + incrementWeight,
+          confidence: Math.max(existing.confidence, input.confidence ?? 0.8),
+          description: input.description || existing.description,
+          metadata: {
+            ...existing.metadata,
+            ...(input.metadata ?? {}),
+          } as Prisma.InputJsonValue,
+        },
+      });
+
+      return {
+        ...updated,
+        metadata: updated.metadata as Record<string, unknown>,
+      };
+    }
+
+    try {
+      return await this.createRelation(input);
+    } catch (err: any) {
+      if (err.code === 'P2002' || err.meta?.code === '23505') {
+        const recheck = await this.findRelationByEndpoints(
+          input.workspaceId,
+          input.sourceEntityId,
+          input.targetEntityId,
+          input.relationType,
+        );
+        if (recheck) {
+          const incrementWeight = input.weight ?? 1.0;
+          const updated = await prisma.graphRelation.update({
+            where: {
+              workspaceId_id: {
+                workspaceId: input.workspaceId,
+                id: recheck.id,
+              },
+            },
+            data: {
+              weight: recheck.weight + incrementWeight,
+              confidence: Math.max(recheck.confidence, input.confidence ?? 0.8),
+              description: input.description || recheck.description,
+            },
+          });
+          return {
+            ...updated,
+            metadata: updated.metadata as Record<string, unknown>,
+          };
+        }
+      }
+      throw err;
+    }
+  }
+
+  async findMention(
+    workspaceId: string,
+    chunkId: string,
+    entityId: string,
+  ): Promise<{ id: string } | null> {
+    return prisma.chunkEntityMention.findFirst({
+      where: {
+        workspaceId,
+        chunkId,
+        entityId,
+      },
+      select: { id: true },
+    });
+  }
+
+  async createMentionIdempotent(input: CreateMentionInput): Promise<{ id: string }> {
+    const existing = await this.findMention(input.workspaceId, input.chunkId, input.entityId);
+    if (existing) {
+      return existing;
+    }
+    return this.createMention(input);
+  }
+
+  async findEvidence(
+    workspaceId: string,
+    relationId: string,
+    chunkId: string,
+  ): Promise<{ id: string } | null> {
+    return prisma.relationEvidence.findUnique({
+      where: {
+        workspaceId_relationId_chunkId: {
+          workspaceId,
+          relationId,
+          chunkId,
+        },
+      },
+      select: { id: true },
+    });
+  }
+
+  async createEvidenceIdempotent(input: CreateEvidenceInput): Promise<{ id: string }> {
+    const existing = await this.findEvidence(input.workspaceId, input.relationId, input.chunkId);
+    if (existing) {
+      return existing;
+    }
+    try {
+      return await this.createEvidence(input);
+    } catch (err: any) {
+      if (err.code === 'P2002' || err.meta?.code === '23505') {
+        const recheck = await this.findEvidence(input.workspaceId, input.relationId, input.chunkId);
+        if (recheck) return recheck;
+      }
+      throw err;
+    }
+  }
 }
 
 export const graphRepository = new GraphRepository();
