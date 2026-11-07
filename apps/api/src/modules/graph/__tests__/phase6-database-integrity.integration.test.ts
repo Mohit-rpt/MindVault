@@ -234,6 +234,74 @@ describe('Phase 6.0 Database Foundation & Referential Integrity', () => {
       expect(relation.id).toBeDefined();
       expect(relation.workspaceId).toBe(wsAlphaId);
     });
+
+    it('enforces relation weight > 0.0 and confidence between 0.0 and 1.0 with exact SQLSTATE 23514', async () => {
+      // 1. weight = 0.0 must be rejected with 23514 (check_violation)
+      let capturedError: any = null;
+      try {
+        await prisma.$executeRaw`
+          INSERT INTO "graph_relations" (
+            "id", "workspace_id", "source_entity_id", "target_entity_id", "relation_type", "weight", "confidence", "created_at", "updated_at"
+          ) VALUES (
+            gen_random_uuid()::text, ${wsAlphaId}, ${entAlpha1Id}, ${entAlpha2Id}, 'WEIGHT_ZERO', 0.0, 0.8, NOW(), NOW()
+          );
+        `;
+      } catch (err: any) {
+        capturedError = err;
+      }
+      expect(capturedError).not.toBeNull();
+      expect(getSqlState(capturedError)).toBe('23514');
+      expect(capturedError.meta?.code).toBe('23514');
+
+      // 2. negative weight must be rejected with 23514
+      capturedError = null;
+      try {
+        await prisma.$executeRaw`
+          INSERT INTO "graph_relations" (
+            "id", "workspace_id", "source_entity_id", "target_entity_id", "relation_type", "weight", "confidence", "created_at", "updated_at"
+          ) VALUES (
+            gen_random_uuid()::text, ${wsAlphaId}, ${entAlpha1Id}, ${entAlpha2Id}, 'WEIGHT_NEG', -1.0, 0.8, NOW(), NOW()
+          );
+        `;
+      } catch (err: any) {
+        capturedError = err;
+      }
+      expect(capturedError).not.toBeNull();
+      expect(getSqlState(capturedError)).toBe('23514');
+      expect(capturedError.meta?.code).toBe('23514');
+
+      // 3. confidence > 1.0 must be rejected with 23514
+      capturedError = null;
+      try {
+        await prisma.$executeRaw`
+          INSERT INTO "graph_relations" (
+            "id", "workspace_id", "source_entity_id", "target_entity_id", "relation_type", "weight", "confidence", "created_at", "updated_at"
+          ) VALUES (
+            gen_random_uuid()::text, ${wsAlphaId}, ${entAlpha1Id}, ${entAlpha2Id}, 'CONF_HIGH', 1.0, 1.25, NOW(), NOW()
+          );
+        `;
+      } catch (err: any) {
+        capturedError = err;
+      }
+      expect(capturedError).not.toBeNull();
+      expect(getSqlState(capturedError)).toBe('23514');
+      expect(capturedError.meta?.code).toBe('23514');
+
+      // 4. GraphRAG cumulative edge weight > 1.0 (e.g. 7.5) with valid confidence MUST BE ACCEPTED
+      const highWeightRel = await prisma.graphRelation.create({
+        data: {
+          workspaceId: wsAlphaId,
+          sourceEntityId: entAlpha1Id,
+          targetEntityId: entAlpha2Id,
+          relationType: 'CORROBORATED_PATH',
+          weight: 7.5,
+          confidence: 0.98,
+        },
+      });
+      expect(highWeightRel.id).toBeDefined();
+      expect(highWeightRel.weight).toBe(7.5);
+      expect(highWeightRel.confidence).toBe(0.98);
+    });
   });
 
   // =========================================================================
@@ -442,7 +510,7 @@ describe('Phase 6.0 Database Foundation & Referential Integrity', () => {
       expect(capturedError.meta?.code).toBe('23505');
     });
 
-    it('allows CANONICAL alias update when triggered by parent GraphEntity update', async () => {
+    it('allows CANONICAL alias update when triggered by parent GraphEntity update and verifies full synchronization', async () => {
       await prisma.graphEntity.update({
         where: {
           workspaceId_id: {
@@ -456,6 +524,7 @@ describe('Phase 6.0 Database Foundation & Referential Integrity', () => {
         },
       });
 
+      // 1. New normalized alias must exist and match
       const updatedAlias = await prisma.graphEntityAlias.findUnique({
         where: {
           workspaceId_normalizedAlias: {
@@ -468,6 +537,97 @@ describe('Phase 6.0 Database Foundation & Referential Integrity', () => {
       expect(updatedAlias).not.toBeNull();
       expect(updatedAlias?.alias).toBe('GraphQL Interface');
       expect(updatedAlias?.aliasType).toBe('CANONICAL');
+      expect(updatedAlias?.entityId).toBe(parentEntityId);
+      expect(updatedAlias?.workspaceId).toBe(wsAlphaId);
+
+      // 2. Old normalized alias must no longer exist in the registry
+      const oldAlias = await prisma.graphEntityAlias.findUnique({
+        where: {
+          workspaceId_normalizedAlias: {
+            workspaceId: wsAlphaId,
+            normalizedAlias: 'graphql',
+          },
+        },
+      });
+      expect(oldAlias).toBeNull();
+    });
+
+    it('MUST REJECT nested trigger bypass attempts on CANONICAL alias when parent entity exists with exact SQLSTATE 23505', async () => {
+      // 1. Create a separate test entity to verify nested trigger protection
+      const bypassTestEntity = await prisma.graphEntity.create({
+        data: {
+          workspaceId: wsAlphaId,
+          canonicalName: 'Nested Trigger Guard',
+          normalizedName: 'nested-trigger-guard',
+          entityType: 'CONCEPT',
+        },
+      });
+
+      const aliasRow = await prisma.graphEntityAlias.findUniqueOrThrow({
+        where: {
+          workspaceId_normalizedAlias: {
+            workspaceId: wsAlphaId,
+            normalizedAlias: 'nested-trigger-guard',
+          },
+        },
+      });
+
+      // 2. Setup temporary table and nested trigger that fires at trigger_depth >= 2
+      await prisma.$executeRawUnsafe(`
+        CREATE TEMP TABLE temp_bypass_invoker (
+          id text PRIMARY KEY,
+          target_alias_id text NOT NULL
+        );
+      `);
+
+      await prisma.$executeRawUnsafe(`
+        CREATE OR REPLACE FUNCTION trg_test_nested_bypass_attempt()
+        RETURNS TRIGGER AS $$
+        BEGIN
+          DELETE FROM "graph_entity_aliases" WHERE "id" = OLD.target_alias_id;
+          RETURN OLD;
+        END;
+        $$ LANGUAGE plpgsql;
+      `);
+
+      await prisma.$executeRawUnsafe(`
+        CREATE TRIGGER trg_test_nested_bypass
+        AFTER DELETE ON temp_bypass_invoker
+        FOR EACH ROW
+        EXECUTE FUNCTION trg_test_nested_bypass_attempt();
+      `);
+
+      await prisma.$executeRawUnsafe(`
+        INSERT INTO temp_bypass_invoker (id, target_alias_id) VALUES ('invoker_1', '${aliasRow.id}');
+      `);
+
+      // 3. Delete from temp_bypass_invoker, which fires trg_test_nested_bypass_attempt at trigger_depth 2
+      let capturedError: any = null;
+      try {
+        await prisma.$executeRawUnsafe(`DELETE FROM temp_bypass_invoker WHERE id = 'invoker_1';`);
+      } catch (err: any) {
+        capturedError = err;
+      }
+
+      // Cleanup temp table and function
+      await prisma.$executeRawUnsafe(`DROP TABLE IF EXISTS temp_bypass_invoker;`);
+      await prisma.$executeRawUnsafe(`DROP FUNCTION IF EXISTS trg_test_nested_bypass_attempt;`);
+
+      // 4. Assert that the nested trigger was blocked with exact SQLSTATE 23505
+      expect(capturedError).not.toBeNull();
+      expect(getSqlState(capturedError)).toBe('23505');
+      expect(capturedError.meta?.code).toBe('23505');
+
+      // 5. Verify the canonical alias was NOT deleted
+      const survivingAlias = await prisma.graphEntityAlias.findUnique({
+        where: { id: aliasRow.id },
+      });
+      expect(survivingAlias).not.toBeNull();
+
+      // Clean up test entity
+      await prisma.graphEntity.delete({
+        where: { id: bypassTestEntity.id },
+      });
     });
 
     it('allows clean CASCADE deletion of CANONICAL alias when parent GraphEntity is deleted', async () => {
@@ -685,6 +845,238 @@ describe('Phase 6.0 Database Foundation & Referential Integrity', () => {
         },
       });
       expect(survivingRelation).not.toBeNull();
+    });
+
+    it('MUST REJECT cross-workspace ChunkEntityMention insertion with exact SQLSTATE 23503', async () => {
+      // 1. Chunk in Workspace Alpha
+      const chunkAlpha = await prisma.documentChunk.create({
+        data: {
+          documentId: docAlpha2Id,
+          workspaceId: wsAlphaId,
+          chunkIndex: 10,
+          content: 'Alpha chunk content for mention cross-tenant test.',
+          tokenCount: 8,
+        },
+      });
+
+      // 2. Entity in Workspace Beta
+      const entityBeta = await prisma.graphEntity.create({
+        data: {
+          workspaceId: wsBetaId,
+          canonicalName: 'Beta Isolated Tech',
+          normalizedName: 'beta-isolated-tech',
+          entityType: 'TECHNOLOGY',
+        },
+      });
+
+      // 3. Attempt to link Alpha chunk with Beta entity inside Alpha workspace -> MUST FAIL with 23503
+      let capturedError: any = null;
+      try {
+        await prisma.$executeRaw`
+          INSERT INTO "chunk_entity_mentions" (
+            "id", "workspace_id", "chunk_id", "entity_id", "mention_text", "confidence", "created_at"
+          ) VALUES (
+            gen_random_uuid()::text, ${wsAlphaId}, ${chunkAlpha.id}, ${entityBeta.id}, 'Beta Isolated Tech', 0.9, NOW()
+          );
+        `;
+      } catch (err: any) {
+        capturedError = err;
+      }
+
+      expect(capturedError).not.toBeNull();
+      expect(getSqlState(capturedError)).toBe('23503');
+      expect(capturedError.meta?.code).toBe('23503');
+
+      // 4. Attempt to link Alpha chunk with Beta entity inside Beta workspace -> MUST FAIL with 23503
+      capturedError = null;
+      try {
+        await prisma.$executeRaw`
+          INSERT INTO "chunk_entity_mentions" (
+            "id", "workspace_id", "chunk_id", "entity_id", "mention_text", "confidence", "created_at"
+          ) VALUES (
+            gen_random_uuid()::text, ${wsBetaId}, ${chunkAlpha.id}, ${entityBeta.id}, 'Beta Isolated Tech', 0.9, NOW()
+          );
+        `;
+      } catch (err: any) {
+        capturedError = err;
+      }
+
+      expect(capturedError).not.toBeNull();
+      expect(getSqlState(capturedError)).toBe('23503');
+      expect(capturedError.meta?.code).toBe('23503');
+    });
+
+    it('MUST REJECT cross-workspace RelationEvidence insertion with exact SQLSTATE 23503', async () => {
+      // 1. Create relation in Workspace Alpha
+      const entA = await prisma.graphEntity.create({
+        data: {
+          workspaceId: wsAlphaId,
+          canonicalName: 'Alpha Entity One',
+          normalizedName: 'alpha-entity-one',
+          entityType: 'CONCEPT',
+        },
+      });
+      const entB = await prisma.graphEntity.create({
+        data: {
+          workspaceId: wsAlphaId,
+          canonicalName: 'Alpha Entity Two',
+          normalizedName: 'alpha-entity-two',
+          entityType: 'CONCEPT',
+        },
+      });
+      const relAlpha = await prisma.graphRelation.create({
+        data: {
+          workspaceId: wsAlphaId,
+          sourceEntityId: entA.id,
+          targetEntityId: entB.id,
+          relationType: 'ASSOCIATED_WITH',
+          confidence: 0.9,
+        },
+      });
+
+      // 2. Create chunk in Workspace Beta
+      const chunkBeta = await prisma.documentChunk.create({
+        data: {
+          documentId: docBetaId,
+          workspaceId: wsBetaId,
+          chunkIndex: 99,
+          content: 'Confidential Beta chunk text.',
+          tokenCount: 5,
+        },
+      });
+
+      // 3. Attempt to attach Beta chunk as evidence to Alpha relation -> MUST FAIL with 23503
+      let capturedError: any = null;
+      try {
+        await prisma.$executeRaw`
+          INSERT INTO "relation_evidence" (
+            "id", "workspace_id", "relation_id", "chunk_id", "document_id", "evidence_text", "confidence", "created_at"
+          ) VALUES (
+            gen_random_uuid()::text, ${wsAlphaId}, ${relAlpha.id}, ${chunkBeta.id}, ${docBetaId}, 'Cross tenant text', 0.85, NOW()
+          );
+        `;
+      } catch (err: any) {
+        capturedError = err;
+      }
+
+      expect(capturedError).not.toBeNull();
+      expect(getSqlState(capturedError)).toBe('23503');
+      expect(capturedError.meta?.code).toBe('23503');
+
+      // 4. Inconsistent document_id in same workspace (mismatched chunk_id & document_id) -> MUST FAIL with 23503
+      capturedError = null;
+      try {
+        await prisma.$executeRaw`
+          INSERT INTO "relation_evidence" (
+            "id", "workspace_id", "relation_id", "chunk_id", "document_id", "evidence_text", "confidence", "created_at"
+          ) VALUES (
+            gen_random_uuid()::text, ${wsAlphaId}, ${relAlpha.id}, ${chunkBeta.id}, ${docAlpha2Id}, 'Mismatched doc chunk', 0.85, NOW()
+          );
+        `;
+      } catch (err: any) {
+        capturedError = err;
+      }
+
+      expect(capturedError).not.toBeNull();
+      expect(getSqlState(capturedError)).toBe('23503');
+      expect(capturedError.meta?.code).toBe('23503');
+    });
+
+    it('cleans up chunks, mentions, and evidence via CASCADE when parent document is deleted', async () => {
+      // 1. Create a dedicated document in Workspace Alpha
+      const docGamma = await prisma.document.create({
+        data: {
+          workspaceId: wsAlphaId,
+          uploadedById: userAlphaId,
+          originalName: 'Doc_Gamma_Cascade.pdf',
+          mimeType: 'application/pdf',
+          extension: 'pdf',
+          sizeBytes: BigInt(512),
+          checksum: `checksum-gamma-${Date.now()}`,
+          storageKey: `key-gamma-${Date.now()}`,
+        },
+      });
+
+      // 2. Create chunk in docGamma
+      const chunkGamma = await prisma.documentChunk.create({
+        data: {
+          documentId: docGamma.id,
+          workspaceId: wsAlphaId,
+          chunkIndex: 0,
+          content: 'Gamma document content for cascade testing.',
+          tokenCount: 7,
+        },
+      });
+
+      // 3. Create entity and mention
+      const entGamma = await prisma.graphEntity.create({
+        data: {
+          workspaceId: wsAlphaId,
+          canonicalName: 'Gamma Entity',
+          normalizedName: 'gamma-entity',
+          entityType: 'PRODUCT',
+        },
+      });
+
+      const mention = await prisma.chunkEntityMention.create({
+        data: {
+          workspaceId: wsAlphaId,
+          chunkId: chunkGamma.id,
+          entityId: entGamma.id,
+          mentionText: 'Gamma Entity',
+          confidence: 0.95,
+        },
+      });
+
+      // 4. Create relation and evidence
+      const relGamma = await prisma.graphRelation.create({
+        data: {
+          workspaceId: wsAlphaId,
+          sourceEntityId: entGamma.id,
+          targetEntityId: (
+            await prisma.graphEntity.findFirstOrThrow({ where: { workspaceId: wsAlphaId } })
+          ).id,
+          relationType: 'IS_VARIANT_OF',
+          confidence: 0.9,
+        },
+      });
+
+      const evidence = await prisma.relationEvidence.create({
+        data: {
+          workspaceId: wsAlphaId,
+          relationId: relGamma.id,
+          chunkId: chunkGamma.id,
+          documentId: docGamma.id,
+          evidenceText: 'Gamma document content for cascade testing.',
+          confidence: 0.92,
+        },
+      });
+
+      // 5. Delete docGamma
+      await prisma.document.delete({
+        where: {
+          workspaceId_id: {
+            workspaceId: wsAlphaId,
+            id: docGamma.id,
+          },
+        },
+      });
+
+      // 6. Verify cascading cleanup
+      const chunkCount = await prisma.documentChunk.count({ where: { id: chunkGamma.id } });
+      expect(chunkCount).toBe(0);
+
+      const mentionCount = await prisma.chunkEntityMention.count({ where: { id: mention.id } });
+      expect(mentionCount).toBe(0);
+
+      const evidenceCount = await prisma.relationEvidence.count({ where: { id: evidence.id } });
+      expect(evidenceCount).toBe(0);
+
+      // 7. Verify entity still exists (entities survive document deletion)
+      const survivingEntity = await prisma.graphEntity.findUnique({
+        where: { id: entGamma.id },
+      });
+      expect(survivingEntity).not.toBeNull();
     });
   });
 });
