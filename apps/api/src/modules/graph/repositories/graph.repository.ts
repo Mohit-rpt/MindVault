@@ -91,6 +91,37 @@ export class GraphRepository implements IGraphRepository {
     };
   }
 
+  async updateEntity(
+    workspaceId: string,
+    id: string,
+    data: {
+      entityType?: Prisma.EnumEntityTypeFieldUpdateOperationsInput | any;
+      description?: string;
+      metadata?: Record<string, unknown>;
+    },
+  ): Promise<GraphEntityRecord> {
+    const updated = await prisma.graphEntity.update({
+      where: {
+        workspaceId_id: {
+          workspaceId,
+          id,
+        },
+      },
+      data: {
+        ...(data.entityType ? { entityType: data.entityType } : {}),
+        ...(data.description !== undefined ? { description: data.description } : {}),
+        ...(data.metadata !== undefined
+          ? { metadata: data.metadata as Prisma.InputJsonValue }
+          : {}),
+      },
+    });
+
+    return {
+      ...updated,
+      metadata: updated.metadata as Record<string, unknown>,
+    };
+  }
+
   async createAlias(input: CreateAliasInput): Promise<GraphAliasRecord> {
     const alias = await prisma.graphEntityAlias.create({
       data: {
@@ -319,7 +350,15 @@ export class GraphRepository implements IGraphRepository {
     if (existing) {
       return existing;
     }
-    return this.createMention(input);
+    try {
+      return await this.createMention(input);
+    } catch (err: any) {
+      if (err.code === 'P2002' || err.meta?.code === '23505') {
+        const recheck = await this.findMention(input.workspaceId, input.chunkId, input.entityId);
+        if (recheck) return recheck;
+      }
+      throw err;
+    }
   }
 
   async findEvidence(
@@ -339,7 +378,7 @@ export class GraphRepository implements IGraphRepository {
     });
   }
 
-  async createEvidenceIdempotent(input: CreateEvidenceInput): Promise<{ id: string }> {
+  async createEvidenceIdempotent(input: CreateEvidenceInput, retries = 3): Promise<{ id: string }> {
     const existing = await this.findEvidence(input.workspaceId, input.relationId, input.chunkId);
     if (existing) {
       return existing;
@@ -347,9 +386,17 @@ export class GraphRepository implements IGraphRepository {
     try {
       return await this.createEvidence(input);
     } catch (err: any) {
-      if (err.code === 'P2002' || err.meta?.code === '23505') {
+      const sqlCode = err.meta?.code || err.code;
+      if (sqlCode === 'P2002' || sqlCode === '23505') {
         const recheck = await this.findEvidence(input.workspaceId, input.relationId, input.chunkId);
         if (recheck) return recheck;
+      }
+      if (
+        (sqlCode === '40P01' || sqlCode === '40001' || err.message?.includes('deadlock')) &&
+        retries > 0
+      ) {
+        await new Promise((r) => setTimeout(r, 25 + Math.random() * 50));
+        return this.createEvidenceIdempotent(input, retries - 1);
       }
       throw err;
     }

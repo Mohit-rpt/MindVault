@@ -75,6 +75,7 @@ export class GraphExtractionService {
         const resolution = await this.entityResolver.resolve(workspaceId, extractedEntity);
         entitiesResolved++;
         entityIdMap.set(normalizedName, resolution.entity.id);
+        entityIdMap.set(resolution.entity.normalizedName, resolution.entity.id);
 
         // Map any aliases as well
         if (extractedEntity.aliases) {
@@ -86,12 +87,23 @@ export class GraphExtractionService {
           }
         }
 
+        // Calculate start/end offset if mention text occurs directly in chunk content
+        let startOffset: number | undefined;
+        let endOffset: number | undefined;
+        const mentionIdx = content.toLowerCase().indexOf(extractedEntity.name.toLowerCase());
+        if (mentionIdx >= 0) {
+          startOffset = mentionIdx;
+          endOffset = mentionIdx + extractedEntity.name.length;
+        }
+
         // 4. Idempotently persist entity mention
         await this.graphRepo.createMentionIdempotent({
           workspaceId,
           chunkId,
           entityId: resolution.entity.id,
           mentionText: extractedEntity.name.slice(0, 255),
+          startOffset,
+          endOffset,
           confidence: extractedEntity.confidence,
         });
         mentionsCreated++;

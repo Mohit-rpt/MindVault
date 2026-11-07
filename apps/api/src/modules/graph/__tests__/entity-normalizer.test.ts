@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { EntityNormalizer } from '../normalizers/entity.normalizer.js';
 
-describe('Phase 6.1: EntityNormalizer Unit Tests', () => {
+describe('Phase 6.2: EntityNormalizer Unit Tests', () => {
   describe('normalize()', () => {
     it('normalizes case consistently to lowercase', () => {
       expect(EntityNormalizer.normalize('PostgreSQL')).toBe('postgresql');
@@ -54,6 +54,28 @@ describe('Phase 6.1: EntityNormalizer Unit Tests', () => {
       expect(EntityNormalizer.normalize('user_session_id')).toBe('user_session_id');
     });
 
+    it('cleans non-semantic trailing and leading boundary punctuation', () => {
+      // Trailing periods from sentence boundaries must match canonical terms
+      expect(EntityNormalizer.normalize('PostgreSQL.')).toBe('postgresql');
+      expect(EntityNormalizer.normalize('Docker.')).toBe('docker');
+
+      // Boundary hyphens and slashes
+      expect(EntityNormalizer.normalize('- Docker -')).toBe('docker');
+      expect(EntityNormalizer.normalize('/REST API/')).toBe('rest api');
+      expect(EntityNormalizer.normalize('Microservices:')).toBe('microservices');
+      expect(EntityNormalizer.normalize('Kubernetes;')).toBe('kubernetes');
+
+      // But preserves leading dot for .NET
+      expect(EntityNormalizer.normalize('.NET')).toBe('.net');
+    });
+
+    it('strips English possessive suffixes cleanly', () => {
+      expect(EntityNormalizer.normalize("Google's")).toBe('google');
+      expect(EntityNormalizer.normalize("Docker's")).toBe('docker');
+      expect(EntityNormalizer.normalize('Kubernetes’')).toBe('kubernetes');
+      expect(EntityNormalizer.normalize("Engineers'")).toBe('engineers');
+    });
+
     it('strips unnecessary wrapping quotes, brackets, and parentheses', () => {
       expect(EntityNormalizer.normalize('"PostgreSQL"')).toBe('postgresql');
       expect(EntityNormalizer.normalize("'Redis'")).toBe('redis');
@@ -78,6 +100,37 @@ describe('Phase 6.1: EntityNormalizer Unit Tests', () => {
     });
   });
 
+  describe('extractDisambiguation()', () => {
+    it('extracts primary stem and parenthetical alias', () => {
+      expect(EntityNormalizer.extractDisambiguation('PostgreSQL (RDBMS)')).toEqual({
+        stem: 'PostgreSQL',
+        alias: 'RDBMS',
+      });
+      expect(EntityNormalizer.extractDisambiguation('Amazon Web Services (AWS)')).toEqual({
+        stem: 'Amazon Web Services',
+        alias: 'AWS',
+      });
+      expect(EntityNormalizer.extractDisambiguation('TypeScript (TS)')).toEqual({
+        stem: 'TypeScript',
+        alias: 'TS',
+      });
+    });
+
+    it('returns original term as stem when no parenthetical suffix exists', () => {
+      expect(EntityNormalizer.extractDisambiguation('Node.js')).toEqual({
+        stem: 'Node.js',
+      });
+      expect(EntityNormalizer.extractDisambiguation('Docker Engine')).toEqual({
+        stem: 'Docker Engine',
+      });
+    });
+
+    it('handles empty, null, or invalid non-string inputs safely', () => {
+      expect(EntityNormalizer.extractDisambiguation('')).toEqual({ stem: '' });
+      expect(EntityNormalizer.extractDisambiguation(null as any)).toEqual({ stem: '' });
+    });
+  });
+
   describe('normalizeRelationType()', () => {
     it('normalizes relation types to uppercase underscored tokens', () => {
       expect(EntityNormalizer.normalizeRelationType('uses')).toBe('USES');
@@ -85,6 +138,22 @@ describe('Phase 6.1: EntityNormalizer Unit Tests', () => {
       expect(EntityNormalizer.normalizeRelationType('depends-on')).toBe('DEPENDS_ON');
       expect(EntityNormalizer.normalizeRelationType('implemented in')).toBe('IMPLEMENTED_IN');
       expect(EntityNormalizer.normalizeRelationType('IS_A')).toBe('IS_A');
+    });
+
+    it('canonicalizes synonymous relation types to schema standard vocabulary', () => {
+      expect(EntityNormalizer.normalizeRelationType('depends upon')).toBe('DEPENDS_ON');
+      expect(EntityNormalizer.normalizeRelationType('relies_on')).toBe('DEPENDS_ON');
+      expect(EntityNormalizer.normalizeRelationType('utilizes')).toBe('USES');
+      expect(EntityNormalizer.normalizeRelationType('leverages')).toBe('USES');
+      expect(EntityNormalizer.normalizeRelationType('component of')).toBe('PART_OF');
+      expect(EntityNormalizer.normalizeRelationType('is_part_of')).toBe('PART_OF');
+      expect(EntityNormalizer.normalizeRelationType('belongs_to')).toBe('PART_OF');
+      expect(EntityNormalizer.normalizeRelationType('communicates with')).toBe('CONNECTS_TO');
+      expect(EntityNormalizer.normalizeRelationType('integrates_with')).toBe('CONNECTS_TO');
+      expect(EntityNormalizer.normalizeRelationType('persists')).toBe('STORES');
+      expect(EntityNormalizer.normalizeRelationType('employed by')).toBe('WORKS_FOR');
+      expect(EntityNormalizer.normalizeRelationType('based in')).toBe('LOCATED_IN');
+      expect(EntityNormalizer.normalizeRelationType('headquartered_in')).toBe('LOCATED_IN');
     });
 
     it('defaults to RELATED_TO for empty or invalid types', () => {

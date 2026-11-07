@@ -10,6 +10,12 @@ export interface CreateEntityInput {
   metadata?: Record<string, unknown>;
 }
 
+export interface UpdateEntityInput {
+  entityType?: EntityType;
+  description?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface CreateAliasInput {
   workspaceId: string;
   entityId: string;
@@ -92,6 +98,11 @@ export interface IGraphRepository {
     normalizedAlias: string,
   ): Promise<GraphEntityRecord | null>;
   createEntity(input: CreateEntityInput): Promise<GraphEntityRecord>;
+  updateEntity(
+    workspaceId: string,
+    id: string,
+    data: UpdateEntityInput,
+  ): Promise<GraphEntityRecord>;
   createAlias(input: CreateAliasInput): Promise<GraphAliasRecord>;
   createRelation(input: CreateRelationInput): Promise<GraphRelationRecord>;
   createMention(input: CreateMentionInput): Promise<{ id: string }>;

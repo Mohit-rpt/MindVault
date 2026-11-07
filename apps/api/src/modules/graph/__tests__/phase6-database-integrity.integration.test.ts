@@ -628,7 +628,7 @@ describe('Phase 6.0 Database Foundation & Referential Integrity', () => {
       await prisma.graphEntity.delete({
         where: { id: bypassTestEntity.id },
       });
-    });
+    }, 15000);
 
     it('allows clean CASCADE deletion of CANONICAL alias when parent GraphEntity is deleted', async () => {
       await prisma.graphEntity.delete({

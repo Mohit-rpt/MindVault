@@ -2,7 +2,8 @@
  * MindVault — Knowledge Graph: Relation Resolver & Deduplicator
  *
  * Validates relation endpoints, rejects self-loops and hallucinated evidence,
- * normalizes relation types, and executes deterministic relation deduplication
+ * normalizes relation types with synonym canonicalization, canonicalizes symmetric edges,
+ * and executes deterministic relation deduplication and inverse-relation consolidation
  * while preserving multi-chunk supporting evidence.
  */
 
@@ -21,6 +22,19 @@ export interface ValidatedRelation {
   confidence: number;
   evidence: string;
 }
+
+/**
+ * Inverse relation pairs mapping passive/subordinate forms to active/canonical forms.
+ * When an inverse relation already exists in the graph, evidence is attached to the existing
+ * canonical edge to avoid disconnected duplicate knowledge.
+ */
+export const INVERSE_RELATION_MAP: Readonly<Record<string, string>> = Object.freeze({
+  PART_OF: 'CONTAINS',
+  WORKS_FOR: 'EMPLOYS',
+  OWNED_BY: 'OWNS',
+  PRODUCED_BY: 'PRODUCES',
+  STORED_IN: 'STORES',
+});
 
 /**
  * Strict evidence validator for provenance tracking.
@@ -46,8 +60,8 @@ export function validateEvidenceInChunk(
   if (ev.length < 3) return false;
 
   // 3. Lowercase & Whitespace normalization (\s+ -> single space)
-  const normChunk = chunk.toLowerCase().replace(/[\s\u00A0\u200B]+/g, ' ');
-  const normEv = ev.toLowerCase().replace(/[\s\u00A0\u200B]+/g, ' ');
+  const normChunk = chunk.toLowerCase().replace(/[\s\u00A0\u200B\uFEFF]+/g, ' ');
+  const normEv = ev.toLowerCase().replace(/[\s\u00A0\u200B\uFEFF]+/g, ' ');
 
   // 4. Exact full normalized substring match
   if (normChunk.includes(normEv)) {
@@ -95,17 +109,28 @@ export class RelationResolver {
       return null;
     }
 
-    // 3. Normalize relation type
+    // 3. Normalize relation type with synonym canonicalization
     const relationType = EntityNormalizer.normalizeRelationType(extracted.relationType);
 
-    // 4. Validate confidence score bounds [0.0, 1.0]
+    // 4. Canonicalize symmetric relation endpoints (e.g. CONNECTS_TO, SIMILAR_TO)
+    // Order endpoints lexicographically so (A, CONNECTS_TO, B) and (B, CONNECTS_TO, A) map to the exact same relation
+    let finalSourceId = sourceEntityId;
+    let finalTargetId = targetEntityId;
+    if (EntityNormalizer.SYMMETRIC_RELATIONS.has(relationType)) {
+      if (sourceEntityId > targetEntityId) {
+        finalSourceId = targetEntityId;
+        finalTargetId = sourceEntityId;
+      }
+    }
+
+    // 5. Validate confidence score bounds [0.0, 1.0]
     const confidence = Math.min(1.0, Math.max(0.0, extracted.confidence ?? 0.8));
     if (confidence < 0.5) {
       // Drop very low confidence relations
       return null;
     }
 
-    // 5. Strict evidence validation: Ensure entire evidence sentence/clause is grounded in chunk
+    // 6. Strict evidence validation: Ensure entire evidence sentence/clause is grounded in chunk
     const evidence = extracted.evidence?.trim();
     if (!evidence || !validateEvidenceInChunk(evidence, chunkContent)) {
       // Evidence not found or fabricated continuation: reject hallucinated evidence
@@ -113,8 +138,8 @@ export class RelationResolver {
     }
 
     return {
-      sourceEntityId,
-      targetEntityId,
+      sourceEntityId: finalSourceId,
+      targetEntityId: finalTargetId,
       relationType,
       description: extracted.description?.trim(),
       confidence,
@@ -124,6 +149,7 @@ export class RelationResolver {
 
   /**
    * Upserts the relation into the workspace graph and attaches supporting evidence.
+   * Consolidates evidence into existing inverse relations when applicable.
    */
   public async resolveAndPersist(
     workspaceId: string,
@@ -131,7 +157,34 @@ export class RelationResolver {
     chunkId: string,
     validated: ValidatedRelation,
   ): Promise<{ relation: GraphRelationRecord; evidenceId: string }> {
-    // 1. Upsert relation (maintains non-decreasing confidence, initial weight 1.0)
+    // 1. Check if an inverse relation already exists in the graph for this entity pair
+    // e.g. If (Target, CONTAINS, Source) already exists, and we are adding (Source, PART_OF, Target)
+    const inverseType = INVERSE_RELATION_MAP[validated.relationType];
+    if (inverseType) {
+      const existingInverse = await this.graphRepo.findRelationByEndpoints(
+        workspaceId,
+        validated.targetEntityId,
+        validated.sourceEntityId,
+        inverseType,
+      );
+
+      if (existingInverse) {
+        // Attach evidence to the established canonical inverse relation
+        const evidence = await this.graphRepo.createEvidenceIdempotent({
+          workspaceId,
+          relationId: existingInverse.id,
+          chunkId,
+          documentId,
+          evidenceText: validated.evidence,
+          confidence: validated.confidence,
+        });
+
+        const refreshed = await this.graphRepo.findRelationById(workspaceId, existingInverse.id);
+        return { relation: refreshed || existingInverse, evidenceId: evidence.id };
+      }
+    }
+
+    // 2. Upsert relation (maintains non-decreasing confidence, initial weight 1.0)
     const relation = await this.graphRepo.upsertRelation({
       workspaceId,
       sourceEntityId: validated.sourceEntityId,
@@ -142,7 +195,7 @@ export class RelationResolver {
       confidence: validated.confidence,
     });
 
-    // 2. Idempotently record supporting evidence for this relation
+    // 3. Idempotently record supporting evidence for this relation
     // The database trigger automatically keeps weight = max(1, count(distinct chunkId))
     const evidence = await this.graphRepo.createEvidenceIdempotent({
       workspaceId,
@@ -153,7 +206,7 @@ export class RelationResolver {
       confidence: validated.confidence,
     });
 
-    // 3. Re-read the relation to return the trigger-synchronized authoritative weight
+    // 4. Re-read the relation to return the trigger-synchronized authoritative weight
     const refreshed = await this.graphRepo.findRelationById(workspaceId, relation.id);
 
     return { relation: refreshed || relation, evidenceId: evidence.id };
