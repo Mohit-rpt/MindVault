@@ -133,7 +133,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 animate-fadeIn">
       {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={onClose} />
+      <div
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+        onClick={onClose}
+      />
 
       {/* Modal Surface */}
       <div className="relative w-full max-w-2xl bg-theme-surface border border-theme-border rounded-2xl shadow-modal overflow-hidden flex flex-col md:flex-row h-[560px] max-h-[90vh] z-10 text-theme-text">
@@ -277,7 +280,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                     </div>
 
                     <p className="text-[11px] text-[#77766F] leading-relaxed">
-                      Warm ivory backgrounds with charcoal typography and soft shadows. Default experience.
+                      Warm ivory backgrounds with charcoal typography and soft shadows. Default
+                      experience.
                     </p>
                   </div>
 
@@ -309,7 +313,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                     </div>
 
                     <p className="text-[11px] text-[#A3A39A] leading-relaxed">
-                      Sophisticated dark surfaces with warm stone accents. Avoids pure black fatigue.
+                      Sophisticated dark surfaces with warm stone accents. Avoids pure black
+                      fatigue.
                     </p>
                   </div>
                 </div>
@@ -404,7 +409,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                         key={m.userId}
                         className="flex items-center justify-between p-2 rounded-xl bg-theme-surface-secondary/40 border border-theme-border/60 text-xs"
                       >
-                        <span className="font-medium text-theme-text">{m.user?.email || m.userId}</span>
+                        <span className="font-medium text-theme-text">
+                          {m.user?.email || m.userId}
+                        </span>
                         <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-theme-surface text-theme-accent border border-theme-border">
                           {m.role}
                         </span>
@@ -439,7 +446,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                               Session {s.id.slice(0, 8)}... {s.isCurrent ? '(Current)' : ''}
                             </p>
                             <p className="text-[10px] text-theme-text-muted">
-                              Created {new Date(s.createdAt).toLocaleDateString()} • Expires {new Date(s.expiresAt).toLocaleDateString()}
+                              Created {new Date(s.createdAt).toLocaleDateString()} • Expires{' '}
+                              {new Date(s.expiresAt).toLocaleDateString()}
                             </p>
                           </div>
                         </div>

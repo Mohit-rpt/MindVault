@@ -1,13 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import type { RetrievalMode } from '@mindvault/shared';
-import {
-  ArrowUp,
-  Square,
-  Sliders,
-  Image as ImageIcon,
-  X,
-  Zap,
-} from 'lucide-react';
+import { ArrowUp, Square, Sliders, Image as ImageIcon, X, Zap } from 'lucide-react';
 
 export interface ChatSendOptions {
   mode: RetrievalMode;

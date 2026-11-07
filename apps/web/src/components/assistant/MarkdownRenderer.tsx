@@ -6,10 +6,7 @@ interface MarkdownRendererProps {
   onCitationClick?: (citationId: string) => void;
 }
 
-export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
-  content,
-  onCitationClick,
-}) => {
+export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, onCitationClick }) => {
   if (!content) return null;
 
   // Split by code fences first
@@ -49,13 +46,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
         if (block.type === 'code') {
           return <CodeBlock key={idx} language={block.lang || 'code'} code={block.text} />;
         }
-        return (
-          <TextBlock
-            key={idx}
-            text={block.text}
-            onCitationClick={onCitationClick}
-          />
-        );
+        return <TextBlock key={idx} text={block.text} onCitationClick={onCitationClick} />;
       })}
     </div>
   );
@@ -115,7 +106,10 @@ const TextBlock: React.FC<{
     if (inList && listItems.length > 0) {
       if (isOrderedList) {
         elements.push(
-          <ol key={`ol-${elements.length}`} className="list-decimal list-outside pl-5 space-y-1 my-2">
+          <ol
+            key={`ol-${elements.length}`}
+            className="list-decimal list-outside pl-5 space-y-1 my-2"
+          >
             {listItems.map((item, i) => (
               <li key={i}>{renderInline(item, onCitationClick)}</li>
             ))}
@@ -151,7 +145,10 @@ const TextBlock: React.FC<{
       const headers = parseCells(headerRow);
 
       elements.push(
-        <div key={`table-${elements.length}`} className="my-3 overflow-x-auto rounded-xl border border-theme-border">
+        <div
+          key={`table-${elements.length}`}
+          className="my-3 overflow-x-auto rounded-xl border border-theme-border"
+        >
           <table className="w-full text-left text-xs border-collapse">
             <thead className="bg-theme-surface-secondary text-theme-text border-b border-theme-border font-medium">
               <tr>

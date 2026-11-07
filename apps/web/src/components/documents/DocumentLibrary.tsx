@@ -249,7 +249,9 @@ export const DocumentLibrary: React.FC = () => {
             disabled={isRefreshing}
             className="p-2 rounded-xl bg-theme-surface border border-theme-border text-theme-text-muted hover:text-theme-text hover:bg-theme-surface-hover transition-colors shadow-subtle"
           >
-            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-theme-accent' : ''}`} />
+            <RefreshCw
+              className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-theme-accent' : ''}`}
+            />
           </button>
           <button
             onClick={() => setShowUploader((prev) => !prev)}

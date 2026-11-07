@@ -31,11 +31,7 @@ export class GeminiProvider implements LLMProvider {
     const rawModel = options?.modelName || process.env.GEMINI_MODEL || 'gemini-3.5-flash';
 
     // Auto-migrate deprecated models (e.g., gemini-2.5-flash, gemini-2.0, gemini-1.5) to gemini-3.5-flash
-    if (
-      rawModel.includes('2.5') ||
-      rawModel.includes('2.0') ||
-      rawModel.includes('1.5')
-    ) {
+    if (rawModel.includes('2.5') || rawModel.includes('2.0') || rawModel.includes('1.5')) {
       this.modelName = 'gemini-3.5-flash';
     } else {
       this.modelName = rawModel;
@@ -93,14 +89,9 @@ export class GeminiProvider implements LLMProvider {
     return Array.from(new Set(list));
   }
 
-  public async generate(
-    prompt: string,
-    options?: LLMGenerateOptions,
-  ): Promise<LLMGenerateResult> {
+  public async generate(prompt: string, options?: LLMGenerateOptions): Promise<LLMGenerateResult> {
     if (!this.apiKey) {
-      throw new Error(
-        'GEMINI_API_KEY is missing. Please add GEMINI_API_KEY to your .env file.',
-      );
+      throw new Error('GEMINI_API_KEY is missing. Please add GEMINI_API_KEY to your .env file.');
     }
 
     const startTime = performance.now();
@@ -135,8 +126,15 @@ export class GeminiProvider implements LLMProvider {
         lastError = err;
         const msg = String(err.message || err);
         // If 404 (model not found/deprecated) or 503 (high demand), try fallback model
-        if (msg.includes('404') || msg.includes('503') || msg.includes('UNAVAILABLE') || msg.includes('NOT_FOUND')) {
-          console.warn(`[GeminiProvider] Model ${model} encountered issue (${msg}). Retrying with fallback candidate...`);
+        if (
+          msg.includes('404') ||
+          msg.includes('503') ||
+          msg.includes('UNAVAILABLE') ||
+          msg.includes('NOT_FOUND')
+        ) {
+          console.warn(
+            `[GeminiProvider] Model ${model} encountered issue (${msg}). Retrying with fallback candidate...`,
+          );
           continue;
         }
         throw new Error(`Gemini generation failed: ${msg}`);
@@ -151,9 +149,7 @@ export class GeminiProvider implements LLMProvider {
     options?: LLMGenerateOptions,
   ): AsyncIterable<LLMStreamChunk> {
     if (!this.apiKey) {
-      throw new Error(
-        'GEMINI_API_KEY is missing. Please add GEMINI_API_KEY to your .env file.',
-      );
+      throw new Error('GEMINI_API_KEY is missing. Please add GEMINI_API_KEY to your .env file.');
     }
 
     const contents = this.buildContents(prompt, options);
@@ -178,8 +174,15 @@ export class GeminiProvider implements LLMProvider {
         break;
       } catch (err: any) {
         const msg = String(err.message || err);
-        if (msg.includes('404') || msg.includes('503') || msg.includes('UNAVAILABLE') || msg.includes('NOT_FOUND')) {
-          console.warn(`[GeminiProvider] Model ${model} unavailable (${msg}). Retrying with fallback candidate...`);
+        if (
+          msg.includes('404') ||
+          msg.includes('503') ||
+          msg.includes('UNAVAILABLE') ||
+          msg.includes('NOT_FOUND')
+        ) {
+          console.warn(
+            `[GeminiProvider] Model ${model} unavailable (${msg}). Retrying with fallback candidate...`,
+          );
           continue;
         }
         throw new Error(`Gemini stream failed: ${msg}`);

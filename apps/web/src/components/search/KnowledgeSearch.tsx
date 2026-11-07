@@ -83,7 +83,9 @@ export const KnowledgeSearch: React.FC = () => {
               <Sparkles className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-base font-semibold text-theme-text">Knowledge Search & Retrieval</h2>
+              <h2 className="text-base font-semibold text-theme-text">
+                Knowledge Search & Retrieval
+              </h2>
               <p className="text-xs text-theme-text-muted">
                 Evidence-grounded hybrid search across indexed workspace documents
               </p>

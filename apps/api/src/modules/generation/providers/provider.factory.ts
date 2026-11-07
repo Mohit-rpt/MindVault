@@ -12,8 +12,8 @@ export class LLMProviderFactory {
   private static instances: Map<string, LLMProvider> = new Map();
 
   public static getProvider(requestedProvider?: string): LLMProvider {
-    // If a mock provider has been explicitly set (e.g. in test suite), prioritize it
-    if (this.activeProvider && process.env.NODE_ENV === 'test') {
+    // If a provider has been explicitly set (e.g. in test suite or eval runner), prioritize it
+    if (this.activeProvider) {
       return this.activeProvider;
     }
 

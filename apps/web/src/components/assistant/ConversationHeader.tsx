@@ -74,7 +74,10 @@ export const ConversationHeader: React.FC<ConversationHeaderProps> = ({
                 className="bg-theme-surface border border-theme-accent rounded-lg px-2 py-0.5 text-xs text-theme-text focus:outline-none w-full max-w-sm"
               />
             ) : (
-              <div className="flex items-center gap-1.5 truncate group cursor-pointer" onClick={handleStartEdit}>
+              <div
+                className="flex items-center gap-1.5 truncate group cursor-pointer"
+                onClick={handleStartEdit}
+              >
                 <h2 className="text-xs sm:text-sm font-semibold text-theme-text truncate tracking-tight">
                   {session.title}
                 </h2>

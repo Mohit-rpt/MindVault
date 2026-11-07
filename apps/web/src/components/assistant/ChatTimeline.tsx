@@ -55,7 +55,8 @@ export const ChatTimeline: React.FC<ChatTimelineProps> = ({
         icon: Compass,
         title: 'Vault overview',
         description: 'What should I know about my uploaded files?',
-        prompt: 'What should I know about the files currently in my vault? What are the key takeaways?',
+        prompt:
+          'What should I know about the files currently in my vault? What are the key takeaways?',
       },
     ];
 
@@ -105,10 +106,7 @@ export const ChatTimeline: React.FC<ChatTimelineProps> = ({
   }
 
   return (
-    <div
-      ref={containerRef}
-      className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 custom-scrollbar"
-    >
+    <div ref={containerRef} className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 custom-scrollbar">
       <div className="max-w-3xl mx-auto space-y-4">
         {messages.map((message) => {
           const isThisStreaming =

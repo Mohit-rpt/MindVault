@@ -298,9 +298,7 @@ export const ConversationSidebar: React.FC<SidebarProps> = ({
             >
               <div className="flex items-center gap-2 truncate">
                 <FolderGit2 className="w-3.5 h-3.5 text-theme-accent shrink-0" />
-                <span className="truncate font-medium text-theme-text">
-                  {activeWorkspace.name}
-                </span>
+                <span className="truncate font-medium text-theme-text">{activeWorkspace.name}</span>
               </div>
               <span className="text-[10px] px-1.5 py-0.2 rounded bg-theme-surface-secondary text-theme-accent uppercase font-mono">
                 {activeWorkspace.role || 'Member'}
@@ -415,9 +413,7 @@ export const ConversationSidebar: React.FC<SidebarProps> = ({
             className="fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
             onClick={onCloseMobile}
           />
-          <div className="relative w-80 max-w-[85vw] h-full shadow-2xl z-10">
-            {sidebarContent}
-          </div>
+          <div className="relative w-80 max-w-[85vw] h-full shadow-2xl z-10">{sidebarContent}</div>
         </div>
       )}
     </>

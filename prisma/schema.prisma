@@ -55,6 +55,13 @@ model Workspace {
   chatSessions ChatSession[]
   chatMessages ChatMessage[]
 
+  // Phase 6: Knowledge Graph
+  graphEntities       GraphEntity[]
+  graphEntityAliases  GraphEntityAlias[]
+  graphRelations      GraphRelation[]
+  chunkEntityMentions ChunkEntityMention[]
+  relationEvidence    RelationEvidence[]
+
   @@map("workspaces")
 }
 
@@ -114,6 +121,7 @@ model Document {
   uploadedBy         User           @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
   chunks             DocumentChunk[]
 
+  @@unique([workspaceId, id])
   @@index([workspaceId])
   @@index([status])
   @@index([workspaceId, checksum])
@@ -121,23 +129,29 @@ model Document {
 }
 
 model DocumentChunk {
-  id          String                      @id @default(uuid())
-  documentId  String
-  workspaceId String
-  chunkIndex  Int
-  content     String                      @db.Text
-  tokenCount  Int
-  pageStart   Int?
-  pageEnd     Int?
-  metadata    Json                        @default("{}")
+  id           String                      @id @default(uuid())
+  documentId   String
+  workspaceId  String
+  chunkIndex   Int
+  content      String                      @db.Text
+  tokenCount   Int
+  pageStart    Int?
+  pageEnd      Int?
+  metadata     Json                        @default("{}")
   embedding    Unsupported("vector(768)")?
   searchVector Unsupported("tsvector")?
   createdAt    DateTime                    @default(now())
 
-  document    Document                    @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  workspace   Workspace                   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  document     Document                    @relation(fields: [workspaceId, documentId], references: [workspaceId, id], onDelete: Cascade)
+  workspace    Workspace                   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  // Phase 6 Graph relations
+  mentions     ChunkEntityMention[]
+  evidence     RelationEvidence[]
 
   @@unique([documentId, chunkIndex])
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, documentId, id])
   @@index([workspaceId])
   @@index([documentId])
   @@map("document_chunks")
@@ -213,5 +227,134 @@ model ChatMessage {
   @@index([workspaceId])
   @@index([sessionId, createdAt])
   @@map("chat_messages")
+}
+
+// =========================================================================
+// Phase 6: Knowledge Graph & GraphRAG Models
+// =========================================================================
+
+enum EntityType {
+  TECHNOLOGY
+  CONCEPT
+  PERSON
+  ORGANIZATION
+  PRODUCT
+  LOCATION
+  OTHER
+}
+
+model GraphEntity {
+  id             String               @id @default(uuid())
+  workspaceId    String               @map("workspace_id")
+  canonicalName  String               @map("canonical_name")
+  normalizedName String               @map("normalized_name")
+  entityType     EntityType           @default(CONCEPT) @map("entity_type")
+  description    String?              @db.Text
+  embedding      Unsupported("vector(768)")?
+  metadata       Json                 @default("{}")
+  createdAt      DateTime             @default(now()) @map("created_at")
+  updatedAt      DateTime             @updatedAt @map("updated_at")
+
+  workspace       Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  aliases         GraphEntityAlias[]
+  sourceRelations GraphRelation[]      @relation("SourceRelations")
+  targetRelations GraphRelation[]      @relation("TargetRelations")
+  mentions        ChunkEntityMention[]
+
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, normalizedName])
+  @@index([workspaceId])
+  @@index([workspaceId, normalizedName])
+  @@index([workspaceId, entityType])
+  @@map("graph_entities")
+}
+
+model GraphEntityAlias {
+  id              String      @id @default(uuid())
+  workspaceId     String      @map("workspace_id")
+  entityId        String      @map("entity_id")
+  alias           String      @db.VarChar(255)
+  normalizedAlias String      @map("normalized_alias") @db.VarChar(255)
+  aliasType       String      @default("SYNONYM") @map("alias_type") @db.VarChar(32)
+  createdAt       DateTime    @default(now()) @map("created_at")
+
+  workspace       Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  entity          GraphEntity @relation(fields: [workspaceId, entityId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@unique([workspaceId, normalizedAlias])
+  @@index([workspaceId, normalizedAlias])
+  @@index([workspaceId, entityId])
+  @@map("graph_entity_aliases")
+}
+
+model GraphRelation {
+  id             String               @id @default(uuid())
+  workspaceId    String               @map("workspace_id")
+  sourceEntityId String               @map("source_entity_id")
+  targetEntityId String               @map("target_entity_id")
+  relationType   String               @map("relation_type") @db.VarChar(64)
+  description    String?              @db.Text
+  weight         Float                @default(1.0)
+  confidence     Float                @default(0.8)
+  metadata       Json                 @default("{}")
+  createdAt      DateTime             @default(now()) @map("created_at")
+  updatedAt      DateTime             @updatedAt @map("updated_at")
+
+  workspace      Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  sourceEntity   GraphEntity          @relation("SourceRelations", fields: [workspaceId, sourceEntityId], references: [workspaceId, id], onDelete: Cascade)
+  targetEntity   GraphEntity          @relation("TargetRelations", fields: [workspaceId, targetEntityId], references: [workspaceId, id], onDelete: Cascade)
+  evidence       RelationEvidence[]
+
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, sourceEntityId, targetEntityId, relationType])
+  @@index([workspaceId])
+  @@index([workspaceId, sourceEntityId])
+  @@index([workspaceId, targetEntityId])
+  @@index([workspaceId, relationType])
+  @@map("graph_relations")
+}
+
+model ChunkEntityMention {
+  id             String               @id @default(uuid())
+  workspaceId    String               @map("workspace_id")
+  chunkId        String               @map("chunk_id")
+  entityId       String               @map("entity_id")
+  mentionText    String               @map("mention_text") @db.VarChar(255)
+  startOffset    Int?                 @map("start_offset")
+  endOffset      Int?                 @map("end_offset")
+  confidence     Float                @default(1.0)
+  createdAt      DateTime             @default(now()) @map("created_at")
+
+  workspace      Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  chunk          DocumentChunk        @relation(fields: [workspaceId, chunkId], references: [workspaceId, id], onDelete: Cascade)
+  entity         GraphEntity          @relation(fields: [workspaceId, entityId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([chunkId])
+  @@index([entityId])
+  @@index([workspaceId, entityId, chunkId])
+  @@map("chunk_entity_mentions")
+}
+
+model RelationEvidence {
+  id             String               @id @default(uuid())
+  workspaceId    String               @map("workspace_id")
+  relationId     String               @map("relation_id")
+  chunkId        String               @map("chunk_id")
+  documentId     String               @map("document_id")
+  evidenceText   String               @map("evidence_text") @db.Text
+  confidence     Float                @default(0.85)
+  createdAt      DateTime             @default(now()) @map("created_at")
+
+  workspace      Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  relation       GraphRelation        @relation(fields: [workspaceId, relationId], references: [workspaceId, id], onDelete: Cascade)
+  chunk          DocumentChunk        @relation(fields: [workspaceId, documentId, chunkId], references: [workspaceId, documentId, id], onDelete: Cascade)
+
+  @@unique([workspaceId, relationId, chunkId])
+  @@index([workspaceId])
+  @@index([relationId])
+  @@index([chunkId])
+  @@index([documentId])
+  @@map("relation_evidence")
 }
 

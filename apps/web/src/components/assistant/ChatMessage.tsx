@@ -1,6 +1,16 @@
 import React, { useState } from 'react';
 import type { ChatMessageDto, GroundingValidationResult } from '@mindvault/shared';
-import { Copy, Check, AlertTriangle, AlertCircle, ZoomIn, X, Zap, RotateCcw, Sparkles } from 'lucide-react';
+import {
+  Copy,
+  Check,
+  AlertTriangle,
+  AlertCircle,
+  ZoomIn,
+  X,
+  Zap,
+  RotateCcw,
+  Sparkles,
+} from 'lucide-react';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { GroundingBadge } from './GroundingBadge';
 
@@ -33,19 +43,19 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
 
   // Attached image if present in message metadata
   const attachedImage = message.metadata?.image as
-    | { mimeType?: string; data?: string; name?: string }
-    | undefined;
+    { mimeType?: string; data?: string; name?: string } | undefined;
 
-  const imageSrc =
-    attachedImage?.data
-      ? attachedImage.data.startsWith('data:')
-        ? attachedImage.data
-        : `data:${attachedImage.mimeType || 'image/png'};base64,${attachedImage.data}`
-      : null;
+  const imageSrc = attachedImage?.data
+    ? attachedImage.data.startsWith('data:')
+      ? attachedImage.data
+      : `data:${attachedImage.mimeType || 'image/png'};base64,${attachedImage.data}`
+    : null;
 
   return (
     <>
-      <div className={`w-full py-3.5 transition-colors ${isUser ? 'flex justify-end' : 'flex justify-start'}`}>
+      <div
+        className={`w-full py-3.5 transition-colors ${isUser ? 'flex justify-end' : 'flex justify-start'}`}
+      >
         {isUser ? (
           /* USER MESSAGE: Elegant warm bubble */
           <div className="max-w-[85%] sm:max-w-2xl flex flex-col items-end">
@@ -174,10 +184,13 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                   {message.citations && message.citations.length > 0 && (
                     <button
                       type="button"
-                      onClick={() => onCitationClick && onCitationClick(message.citations[0].citationId)}
+                      onClick={() =>
+                        onCitationClick && onCitationClick(message.citations[0].citationId)
+                      }
                       className="text-[11px] font-mono hover:text-theme-accent transition-colors cursor-pointer"
                     >
-                      {message.citations.length} cited source{message.citations.length > 1 ? 's' : ''}
+                      {message.citations.length} cited source
+                      {message.citations.length > 1 ? 's' : ''}
                     </button>
                   )}
                 </div>

@@ -13,11 +13,7 @@ export const EmptyLibraryState: React.FC<EmptyLibraryStateProps> = ({
   return (
     <div className="text-center py-16 px-4 rounded-2xl border border-theme-border bg-theme-surface shadow-subtle">
       <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-theme-surface-secondary border border-theme-border/80 flex items-center justify-center text-theme-accent">
-        {isFiltered ? (
-          <FolderOpen className="w-7 h-7" />
-        ) : (
-          <UploadCloud className="w-7 h-7" />
-        )}
+        {isFiltered ? <FolderOpen className="w-7 h-7" /> : <UploadCloud className="w-7 h-7" />}
       </div>
       <h3 className="text-base font-semibold text-theme-text mb-1">
         {isFiltered ? 'No matching documents' : 'Your Knowledge Vault is empty'}

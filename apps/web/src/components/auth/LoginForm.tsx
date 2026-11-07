@@ -33,8 +33,12 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
         <div className="w-10 h-10 rounded-xl bg-theme-accent/10 border border-theme-accent/20 flex items-center justify-center text-theme-accent mx-auto mb-3 font-serif font-bold text-lg">
           MV
         </div>
-        <h2 className="text-2xl font-bold text-theme-text tracking-tight font-serif">Sign in to MindVault</h2>
-        <p className="text-xs text-theme-text-muted mt-1.5">Access your workspaces and knowledge base</p>
+        <h2 className="text-2xl font-bold text-theme-text tracking-tight font-serif">
+          Sign in to MindVault
+        </h2>
+        <p className="text-xs text-theme-text-muted mt-1.5">
+          Access your workspaces and knowledge base
+        </p>
       </div>
 
       {error && (

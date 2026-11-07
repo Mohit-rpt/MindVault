@@ -45,6 +45,7 @@ export interface ConversationEvalMetrics {
 }
 
 export async function runConversationEvaluation(): Promise<ConversationEvalMetrics> {
+  process.env.NODE_ENV = 'test';
   const memoryDb = new InMemoryDatabaseService();
   setDatabaseService(memoryDb);
 

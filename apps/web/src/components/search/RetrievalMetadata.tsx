@@ -74,24 +74,32 @@ export const RetrievalMetadata: React.FC<RetrievalMetadataProps> = ({ metadata }
         <div className="mt-3 pt-3 border-t border-theme-border grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
           <div className="p-2 rounded-lg bg-theme-surface-secondary border border-theme-border">
             <span className="text-theme-text-muted block">Query Normalization</span>
-            <span className="font-mono text-theme-text font-medium">{timings.queryProcessingMs} ms</span>
+            <span className="font-mono text-theme-text font-medium">
+              {timings.queryProcessingMs} ms
+            </span>
           </div>
           {timings.embeddingGenerationMs !== undefined && (
             <div className="p-2 rounded-lg bg-theme-surface-secondary border border-theme-border">
               <span className="text-theme-text-muted block">Query Embedding</span>
-              <span className="font-mono text-theme-text font-medium">{timings.embeddingGenerationMs} ms</span>
+              <span className="font-mono text-theme-text font-medium">
+                {timings.embeddingGenerationMs} ms
+              </span>
             </div>
           )}
           {timings.semanticSearchMs !== undefined && (
             <div className="p-2 rounded-lg bg-theme-surface-secondary border border-theme-border">
               <span className="text-theme-text-muted block">pgvector Cosine Search</span>
-              <span className="font-mono text-theme-text font-medium">{timings.semanticSearchMs} ms</span>
+              <span className="font-mono text-theme-text font-medium">
+                {timings.semanticSearchMs} ms
+              </span>
             </div>
           )}
           {timings.keywordSearchMs !== undefined && (
             <div className="p-2 rounded-lg bg-theme-surface-secondary border border-theme-border">
               <span className="text-theme-text-muted block">PostgreSQL FTS</span>
-              <span className="font-mono text-theme-text font-medium">{timings.keywordSearchMs} ms</span>
+              <span className="font-mono text-theme-text font-medium">
+                {timings.keywordSearchMs} ms
+              </span>
             </div>
           )}
           {timings.fusionMs !== undefined && (
@@ -103,7 +111,9 @@ export const RetrievalMetadata: React.FC<RetrievalMetadataProps> = ({ metadata }
           {timings.contextAssemblyMs !== undefined && (
             <div className="p-2 rounded-lg bg-theme-surface-secondary border border-theme-border">
               <span className="text-theme-text-muted block">Context Assembly</span>
-              <span className="font-mono text-theme-text font-medium">{timings.contextAssemblyMs} ms</span>
+              <span className="font-mono text-theme-text font-medium">
+                {timings.contextAssemblyMs} ms
+              </span>
             </div>
           )}
         </div>

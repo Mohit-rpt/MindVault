@@ -216,20 +216,53 @@ export class QueryContextService {
 
     // 4. Handle comparative questions: "How does that compare to RabbitMQ?"
     if (
-      /\b(how does\s+(?:that|it)\s+compare to|compare\s+(?:that|it)\s+with|how do they compare to)\s+([a-zA-Z0-9_\-]+)/i.test(
+      /\b(how does\s+(?:that|it)\s+compare to|compare\s+(?:that|it)\s+with|how do they compare to)\s+([a-zA-Z0-9_-]+)/i.test(
         query,
       )
     ) {
       const compareMatch = query.match(
-        /\b(?:how does\s+(?:that|it)\s+compare to|compare\s+(?:that|it)\s+with)\s+([a-zA-Z0-9_\-]+)/i,
+        /\b(?:how does\s+(?:that|it)\s+compare to|compare\s+(?:that|it)\s+with)\s+([a-zA-Z0-9_-]+)/i,
       );
       const targetEntity = compareMatch ? compareMatch[1] : 'alternative';
       return `How does ${cleanLast} compare to ${targetEntity}?`;
     }
 
+    // Extract potential acronym for cleanLast from conversation history (e.g. "Reciprocal Rank Fusion (RRF)")
+    let resolvedSubject = cleanLast;
+    const historyText = history.map((m) => m.content).join(' ');
+    const acronymMatches = historyText.matchAll(
+      /\b([A-Z][a-zA-Z0-9]*(?:\s+[A-Z][a-zA-Z0-9]*)*)\s*\(([A-Za-z0-9]+)\)/g,
+    );
+    for (const match of acronymMatches) {
+      const fullTerm = match[1];
+      const acronym = match[2];
+      if (
+        cleanLast.toLowerCase().includes(fullTerm.toLowerCase()) &&
+        !cleanLast.toLowerCase().includes(acronym.toLowerCase())
+      ) {
+        resolvedSubject = cleanLast.replace(
+          new RegExp(fullTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'),
+          `${fullTerm} (${acronym.toUpperCase()})`,
+        );
+        break;
+      }
+    }
+
+    // Handle demonstrative noun phrases: "that technique", "that algorithm", "that approach", "that method"
+    if (
+      /\b(?:that|this|the)\s+(?:technique|method|algorithm|approach|model|tool|system|concept|process)\b/i.test(
+        query,
+      )
+    ) {
+      return query.replace(
+        /\b(?:that|this|the)\s+(?:technique|method|algorithm|approach|model|tool|system|concept|process)\b/gi,
+        resolvedSubject,
+      );
+    }
+
     // 5. Handle generic pronoun replacement (e.g. "what is it used for?" -> "what is <subject> used for?")
     if (/\b(it|this|that)\b/i.test(query)) {
-      return query.replace(/\b(it|this|that)\b/gi, cleanLast);
+      return query.replace(/\b(it|this|that)\b/gi, resolvedSubject);
     }
 
     // 6. Conservative Fallback: If query is already a full question, preserve it rather than inventing context
