@@ -1,15 +1,24 @@
 /**
  * MindVault — Worker: Graph Extraction Queue Dispatcher
  *
- * Enqueues newly ingested documents to the 'graph-extraction' BullMQ queue.
+ * @deprecated Deprecated in Task 6.4.1. Use unified queue contracts and standard jobId generation.
+ * Maintained for worker ingestion pipeline backward compatibility.
  */
 
-import { Queue } from 'bullmq';
+import { Queue, type Job } from 'bullmq';
 import { env } from '../config/env.js';
-import type { GraphExtractionJobPayload } from '@mindvault/shared';
+import {
+  type GraphExtractionJobPayload,
+  GRAPH_EXTRACTION_QUEUE_NAME,
+  GRAPH_EXTRACTION_JOB_NAME,
+  GRAPH_QUEUE_DEFAULT_JOB_OPTIONS,
+  formatExtractionJobId,
+} from '@mindvault/shared';
+import crypto from 'node:crypto';
 
 export interface IWorkerGraphQueue {
-  enqueue(payload: GraphExtractionJobPayload): Promise<void>;
+  enqueue(payload: GraphExtractionJobPayload, options?: { delay?: number }): Promise<string | void>;
+  getJob?(jobId: string): Promise<Job<GraphExtractionJobPayload> | null | undefined>;
   close(): Promise<void>;
 }
 
@@ -19,7 +28,7 @@ export class BullMQWorkerGraphQueue implements IWorkerGraphQueue {
   constructor() {
     if (env.NODE_ENV !== 'test') {
       try {
-        this.queue = new Queue<GraphExtractionJobPayload>('graph-extraction', {
+        this.queue = new Queue<GraphExtractionJobPayload>(GRAPH_EXTRACTION_QUEUE_NAME, {
           connection: {
             url: env.REDIS_URL,
             maxRetriesPerRequest: null,
@@ -31,19 +40,30 @@ export class BullMQWorkerGraphQueue implements IWorkerGraphQueue {
     }
   }
 
-  async enqueue(payload: GraphExtractionJobPayload): Promise<void> {
+  async enqueue(payload: GraphExtractionJobPayload, options?: { delay?: number }): Promise<string> {
+    const runId = payload.extractionRunId || crypto.randomUUID();
+    const jobId = formatExtractionJobId(payload.documentId, runId);
+    const enrichedPayload: GraphExtractionJobPayload = {
+      ...payload,
+      extractionRunId: runId,
+    };
+
     if (this.queue) {
-      await this.queue.add('extract-graph', payload, {
-        jobId: `graph_${payload.documentId}`,
-        attempts: 3,
-        backoff: {
-          type: 'exponential',
-          delay: 2000,
-        },
-        removeOnComplete: true,
-        removeOnFail: false,
+      await this.queue.add(GRAPH_EXTRACTION_JOB_NAME, enrichedPayload, {
+        jobId,
+        ...GRAPH_QUEUE_DEFAULT_JOB_OPTIONS,
+        ...(options?.delay !== undefined ? { delay: options.delay } : {}),
       });
     }
+
+    return jobId;
+  }
+
+  async getJob(jobId: string): Promise<Job<GraphExtractionJobPayload> | null | undefined> {
+    if (this.queue) {
+      return this.queue.getJob(jobId);
+    }
+    return null;
   }
 
   async close(): Promise<void> {

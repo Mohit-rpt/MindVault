@@ -9,3 +9,5 @@ allowBuilds:
   '@prisma/client': true
   '@prisma/engines': true
   'msgpackr-extract': true
+  '@google/genai': true
+  protobufjs: true

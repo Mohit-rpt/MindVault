@@ -1,8 +1,10 @@
 /**
  * MindVault — Knowledge Graph: Asynchronous Extraction Worker
  *
- * Consumes jobs from the 'graph-extraction' queue, verifies tenant isolation,
- * and executes idempotent entity/relation extraction across document chunks.
+ * @deprecated As of Phase 6.4.2, `apps/worker` owns the sole production graph extraction runtime
+ * (`apps/worker/src/modules/graph/worker/graph-extraction.worker.ts`) with dual-lease fencing,
+ * cooperative LLM cancellation, and race-safe shutdown deferral.
+ * This class in `apps/api` is retained only for backward compatibility and test mock references.
  */
 
 import { Worker, type Job } from 'bullmq';

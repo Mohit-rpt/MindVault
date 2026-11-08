@@ -1,16 +1,24 @@
 /**
  * MindVault — Knowledge Graph: BullMQ Extraction Queue
  *
- * Implements job enqueueing with exponential backoff and deduplication keys.
+ * Implements job enqueueing with exponential backoff and deterministic run-bound job IDs (§6.3.3).
  * Includes an in-memory queue for offline unit and integration testing.
  */
 
-import { Queue } from 'bullmq';
+import { Queue, type Job } from 'bullmq';
 import { env } from '../../../config/env.js';
-import type { GraphExtractionJobPayload } from '@mindvault/shared';
+import {
+  type GraphExtractionJobPayload,
+  GRAPH_EXTRACTION_QUEUE_NAME,
+  GRAPH_EXTRACTION_JOB_NAME,
+  GRAPH_QUEUE_DEFAULT_JOB_OPTIONS,
+  formatExtractionJobId,
+} from '@mindvault/shared';
+import crypto from 'node:crypto';
 
 export interface IGraphExtractionQueue {
-  enqueue(payload: GraphExtractionJobPayload): Promise<void>;
+  enqueue(payload: GraphExtractionJobPayload): Promise<string>;
+  getJob(jobId: string): Promise<Job<GraphExtractionJobPayload> | null | undefined>;
   close(): Promise<void>;
 }
 
@@ -20,7 +28,7 @@ export class BullMQGraphExtractionQueue implements IGraphExtractionQueue {
   constructor() {
     if (env.NODE_ENV !== 'test') {
       try {
-        this.queue = new Queue<GraphExtractionJobPayload>('graph-extraction', {
+        this.queue = new Queue<GraphExtractionJobPayload>(GRAPH_EXTRACTION_QUEUE_NAME, {
           connection: {
             url: env.REDIS_URL || 'redis://localhost:6379',
             maxRetriesPerRequest: null,
@@ -32,20 +40,29 @@ export class BullMQGraphExtractionQueue implements IGraphExtractionQueue {
     }
   }
 
-  async enqueue(payload: GraphExtractionJobPayload): Promise<void> {
+  async enqueue(payload: GraphExtractionJobPayload): Promise<string> {
+    const runId = payload.extractionRunId || crypto.randomUUID();
+    const jobId = formatExtractionJobId(payload.documentId, runId);
+    const enrichedPayload: GraphExtractionJobPayload = {
+      ...payload,
+      extractionRunId: runId,
+    };
+
     if (this.queue) {
-      const jobId = `graph_${payload.documentId}_${payload.chunkId || 'doc'}`;
-      await this.queue.add('extract-graph', payload, {
+      await this.queue.add(GRAPH_EXTRACTION_JOB_NAME, enrichedPayload, {
         jobId,
-        attempts: 3,
-        backoff: {
-          type: 'exponential',
-          delay: 2000,
-        },
-        removeOnComplete: true,
-        removeOnFail: false,
+        ...GRAPH_QUEUE_DEFAULT_JOB_OPTIONS,
       });
     }
+
+    return jobId;
+  }
+
+  async getJob(jobId: string): Promise<Job<GraphExtractionJobPayload> | null | undefined> {
+    if (this.queue) {
+      return this.queue.getJob(jobId);
+    }
+    return null;
   }
 
   async close(): Promise<void> {
@@ -58,21 +75,44 @@ export class BullMQGraphExtractionQueue implements IGraphExtractionQueue {
 
 export class InMemoryGraphExtractionQueue implements IGraphExtractionQueue {
   public jobs: GraphExtractionJobPayload[] = [];
+  public enqueuedJobsMap: Map<string, GraphExtractionJobPayload> = new Map();
   public handler?: (payload: GraphExtractionJobPayload) => Promise<void>;
 
-  async enqueue(payload: GraphExtractionJobPayload): Promise<void> {
-    this.jobs.push(payload);
+  async enqueue(payload: GraphExtractionJobPayload): Promise<string> {
+    const runId = payload.extractionRunId || crypto.randomUUID();
+    const jobId = formatExtractionJobId(payload.documentId, runId);
+    const enrichedPayload: GraphExtractionJobPayload = {
+      ...payload,
+      extractionRunId: runId,
+    };
+
+    this.jobs.push(enrichedPayload);
+    this.enqueuedJobsMap.set(jobId, enrichedPayload);
+
     if (this.handler) {
       setTimeout(() => {
-        this.handler!(payload).catch((err) => {
+        this.handler!(enrichedPayload).catch((err) => {
           console.error('In-memory graph worker execution error:', err);
         });
       }, 0);
     }
+
+    return jobId;
+  }
+
+  async getJob(jobId: string): Promise<Job<GraphExtractionJobPayload> | null | undefined> {
+    const payload = this.enqueuedJobsMap.get(jobId);
+    if (!payload) return null;
+    return {
+      id: jobId,
+      data: payload,
+      getState: async () => 'waiting',
+    } as unknown as Job<GraphExtractionJobPayload>;
   }
 
   async close(): Promise<void> {
     this.jobs = [];
+    this.enqueuedJobsMap.clear();
   }
 }
 

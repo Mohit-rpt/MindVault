@@ -12,6 +12,7 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "@google/genai": "^2.32.0",
     "@mindvault/shared": "workspace:*",
     "@prisma/client": "^6.2.1",
     "bullmq": "^6.6.0",

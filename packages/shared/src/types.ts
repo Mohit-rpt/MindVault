@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 
 // Service Health Envelopes
@@ -726,6 +727,8 @@ export type KnowledgeExtractionResponse = z.infer<typeof KnowledgeExtractionResp
 export interface GraphExtractionJobPayload {
   documentId: string;
   workspaceId: string;
+  extractionRunId?: string;
+  chunkManifestHash?: string;
   chunkId?: string;
   forceReextract?: boolean;
 }
@@ -776,3 +779,214 @@ export interface DocumentGraphExtractionResult {
     totalValidationFailures: ExtractionValidationFailures;
   };
 }
+
+// ---------------------------------------------------------------------------
+// Phase 6.4: Reliable Background Queue, Run Identity & Manifest Contracts
+// ---------------------------------------------------------------------------
+
+export interface PendingDispatch {
+  extractionRunId: string; // UUID v4 binding this dispatch to a specific run
+  jobId: string; // Deterministic: `graph_${documentId}_${extractionRunId}`
+  enqueuedAt: null | string; // null = not yet dispatched; ISO 8601 = confirmed dispatched
+  createdAt: string; // ISO 8601 timestamp of intent creation
+  attempts: number; // Number of Redis dispatch attempts made
+  lastAttemptAt: string | null; // ISO 8601 of most recent dispatch attempt
+  lastError: string | null; // Sanitized error from most recent failed dispatch attempt
+}
+
+export interface GraphChunkCheckpoint {
+  extractionRunId: string; // Binds checkpoint strictly to active run
+  chunkManifestHash: string; // SHA-256 of document checksum + ordered chunk content hashes
+  lastCompletedChunkIndex: number; // Integer index (0, 1, 2...)
+  lastCompletedChunkId: string; // Immutable UUID primary key
+  processedChunksCount: number; // processedChunksCount = succeededChunksCount + failedChunksCount
+  succeededChunksCount: number; // Successfully extracted chunks
+  failedChunksCount: number; // Permanently failed chunks
+}
+
+export type GraphTerminalStatus = 'COMPLETED' | 'PARTIAL' | 'FAILED';
+
+export interface GraphFinalizationReceipt {
+  terminalStatus: GraphTerminalStatus;
+  extractionRunId: string;
+  chunkManifestHash: string;
+  completedAt: string; // ISO 8601 string
+  chunkCount: number;
+  processedChunksCount: number;
+  succeededChunksCount: number;
+  failedChunksCount: number;
+}
+
+/**
+ * Strengthened Finalization Receipt Validation Invariants (AC-24, §6.4.5)
+ */
+export function validateFinalizationReceipt(
+  receipt: unknown,
+  expectedRunId?: string,
+  expectedManifestHash?: string,
+  expectedChunkCount?: number,
+): receipt is GraphFinalizationReceipt {
+  if (!receipt || typeof receipt !== 'object') return false;
+
+  const candidate = receipt as Partial<GraphFinalizationReceipt>;
+  const {
+    terminalStatus,
+    extractionRunId,
+    chunkManifestHash,
+    completedAt,
+    chunkCount,
+    processedChunksCount,
+    succeededChunksCount,
+    failedChunksCount,
+  } = candidate;
+
+  // 1. Status vocabulary check
+  if (!terminalStatus || !['COMPLETED', 'PARTIAL', 'FAILED'].includes(terminalStatus)) return false;
+
+  // 2. Run ID and Manifest Hash verification
+  if (typeof extractionRunId !== 'string' || !extractionRunId) return false;
+  if (expectedRunId && extractionRunId !== expectedRunId) return false;
+
+  if (typeof chunkManifestHash !== 'string' || !chunkManifestHash) return false;
+  if (expectedManifestHash && chunkManifestHash !== expectedManifestHash) return false;
+
+  // 3. Timestamp verification
+  if (typeof completedAt !== 'string' || Number.isNaN(Date.parse(completedAt))) return false;
+
+  // 4. Non-negative integer checks
+  if (
+    typeof chunkCount !== 'number' ||
+    !Number.isInteger(chunkCount) ||
+    chunkCount < 0 ||
+    typeof processedChunksCount !== 'number' ||
+    !Number.isInteger(processedChunksCount) ||
+    processedChunksCount < 0 ||
+    typeof succeededChunksCount !== 'number' ||
+    !Number.isInteger(succeededChunksCount) ||
+    succeededChunksCount < 0 ||
+    typeof failedChunksCount !== 'number' ||
+    !Number.isInteger(failedChunksCount) ||
+    failedChunksCount < 0
+  ) {
+    return false;
+  }
+
+  // 5. Strict accounting balance
+  if (processedChunksCount !== succeededChunksCount + failedChunksCount) return false;
+  if (processedChunksCount !== chunkCount) return false;
+  if (expectedChunkCount !== undefined && chunkCount !== expectedChunkCount) return false;
+
+  // 6. Status-specific counter consistency
+  if (terminalStatus === 'COMPLETED') {
+    if (succeededChunksCount !== chunkCount || failedChunksCount !== 0) return false;
+  } else if (terminalStatus === 'PARTIAL') {
+    if (chunkCount === 0 || succeededChunksCount === 0 || failedChunksCount === 0) return false;
+  } else if (terminalStatus === 'FAILED') {
+    if (succeededChunksCount !== 0 || failedChunksCount !== chunkCount) return false;
+  }
+
+  return true;
+}
+
+export type ExtractionErrorType = 'TRANSIENT' | 'PERMANENT' | 'FENCED' | 'DEFERRED';
+
+export interface ManifestChunkInput {
+  chunkIndex: number;
+  id: string;
+  content: string;
+}
+
+/**
+ * Deterministic chunk manifest hash computation (§6.8.1).
+ * chunkManifestHash = sha256(document.checksum + ';' + sum(c.chunkIndex + ':' + c.id + ':' + sha256(c.content)))
+ */
+export function computeChunkManifestHash(
+  documentChecksum: string,
+  chunks: ManifestChunkInput[],
+): string {
+  const sortedChunks = [...chunks].sort((a, b) => a.chunkIndex - b.chunkIndex);
+  const chunkParts = sortedChunks.map((c) => {
+    const contentHash = createHash('sha256').update(c.content, 'utf8').digest('hex');
+    return `${c.chunkIndex}:${c.id}:${contentHash}`;
+  });
+  const serialized = `${documentChecksum};${chunkParts.join(';')}`;
+  return createHash('sha256').update(serialized, 'utf8').digest('hex');
+}
+
+/**
+ * Computes a deterministic 64-bit signed integer advisory lock key (§6.2.4).
+ * Matches PostgreSQL trigger: ('x' || substr(md5(workspace_id || ':' || relation_id), 1, 16))::bit(64)::bigint
+ */
+export function computeRelationLockKey(workspaceId: string, relationId: string): bigint {
+  const hex = createHash('md5')
+    .update(`${workspaceId}:${relationId}`, 'utf8')
+    .digest('hex')
+    .slice(0, 16);
+
+  const unsigned = BigInt(`0x${hex}`);
+  return unsigned >= 0x8000000000000000n ? unsigned - 0x10000000000000000n : unsigned;
+}
+
+/**
+ * Sorts relation objects in deterministic ascending numerical signed 64-bit lock order.
+ */
+export function sortRelationsByLockKey<T extends { lockKey: bigint }>(relations: T[]): T[] {
+  return [...relations].sort((a, b) => (a.lockKey < b.lockKey ? -1 : a.lockKey > b.lockKey ? 1 : 0));
+}
+
+/**
+ * Standard deterministic BullMQ Job ID generator for extraction runs (§6.3.3).
+ */
+export function formatExtractionJobId(documentId: string, extractionRunId: string): string {
+  return `graph_${documentId}_${extractionRunId}`;
+}
+
+export const GRAPH_EXTRACTION_QUEUE_NAME = 'graph-extraction';
+export const GRAPH_EXTRACTION_JOB_NAME = 'extract-graph';
+
+export const GRAPH_QUEUE_DEFAULT_JOB_OPTIONS = {
+  attempts: 3,
+  backoff: {
+    type: 'exponential' as const,
+    delay: 2000,
+  },
+  removeOnComplete: {
+    count: 500,
+    age: 86400,
+  },
+  removeOnFail: {
+    count: 200,
+    age: 604800,
+  },
+};
+
+/**
+ * Redis Lua Distributed Lease Scripts (§6.5.2)
+ */
+
+// 1. Acquire Lease (NX with EX TTL)
+export const LUA_ACQUIRE_LEASE_SCRIPT = `
+if redis.call("set", KEYS[1], ARGV[1], "NX", "EX", ARGV[2]) then
+  return 1
+else
+  return 0
+end
+`.trim();
+
+// 2. Compare-and-Expire (Renew only if token matches)
+export const LUA_RENEW_LEASE_SCRIPT = `
+if redis.call("get", KEYS[1]) == ARGV[1] then
+  return redis.call("expire", KEYS[1], ARGV[2])
+else
+  return 0
+end
+`.trim();
+
+// 3. Compare-and-Delete (Release only if token matches)
+export const LUA_RELEASE_LEASE_SCRIPT = `
+if redis.call("get", KEYS[1]) == ARGV[1] then
+  return redis.call("del", KEYS[1])
+else
+  return 0
+end
+`.trim();

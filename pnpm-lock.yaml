@@ -328,6 +328,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@google/genai':
+        specifier: ^2.32.0
+        version: 2.32.0(supports-color@7.2.0)
       '@mindvault/shared':
         specifier: workspace:*
         version: link:../../packages/shared

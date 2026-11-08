@@ -3,6 +3,12 @@ import type {
   EmbeddingProvider,
   ProcessDocumentJobPayload,
 } from '@mindvault/shared';
+import {
+  computeChunkManifestHash,
+  formatExtractionJobId,
+  type PendingDispatch,
+} from '@mindvault/shared';
+import crypto from 'node:crypto';
 import { extractDocument } from './extractors/index.js';
 import { normalizeText } from './normalization/text.normalizer.js';
 import { chunkDocument } from './chunking/chunker.js';
@@ -114,6 +120,7 @@ export class DocumentIngestionPipeline {
       });
 
       const dbChunks = chunks.map((c, idx) => ({
+        id: `chk_${documentId}_${c.chunkIndex}`,
         documentId,
         workspaceId,
         chunkIndex: c.chunkIndex,
@@ -132,7 +139,39 @@ export class DocumentIngestionPipeline {
 
       await this.db.createDocumentChunks(dbChunks);
 
-      // 8. Stage: COMPLETED
+      // 8. Stage: COMPLETED with Atomic Claim & Intent (§6.3.3)
+      const extractionRunId = crypto.randomUUID();
+      const manifestChunks = dbChunks.map((c) => ({
+        chunkIndex: c.chunkIndex,
+        id: c.id,
+        content: c.content,
+      }));
+      const chunkManifestHash = computeChunkManifestHash(doc.checksum, manifestChunks);
+      const jobId = formatExtractionJobId(documentId, extractionRunId);
+      const nowIso = new Date().toISOString();
+
+      const pendingDispatch: PendingDispatch = {
+        extractionRunId,
+        jobId,
+        enqueuedAt: null,
+        createdAt: nowIso,
+        attempts: 0,
+        lastAttemptAt: null,
+        lastError: null,
+      };
+
+      const updatedMetadata = {
+        ...doc.metadata,
+        processingStage: 'COMPLETED',
+        warnings: extraction.warnings,
+        graphStatus: 'QUEUED',
+        extractionRunId,
+        chunkManifestHash,
+        graphQueuedAt: nowIso,
+        graphAttempts: 1,
+        pendingDispatch,
+      };
+
       await this.db.updateDocument(documentId, {
         status: 'COMPLETED',
         errorMessage: null,
@@ -141,25 +180,40 @@ export class DocumentIngestionPipeline {
         embeddingModel: this.embeddings.modelName,
         embeddingDimension: this.embeddings.dimension,
         processedAt: new Date(),
-        metadata: {
-          ...doc.metadata,
-          processingStage: 'COMPLETED',
-          warnings: extraction.warnings,
-        },
+        metadata: updatedMetadata,
       });
 
       this.logger.info(
         `Successfully completed ingestion for document ${documentId}: ${chunks.length} chunks embedded and stored.`,
       );
 
-      // 9. Asynchronous Knowledge Graph Extraction Handoff
+      // 9. Asynchronous Knowledge Graph Extraction Handoff (Claim-and-Intent Protocol, outside DB Tx)
       if (this.graphQueue) {
         try {
-          await this.graphQueue.enqueue({ documentId, workspaceId });
-          this.logger.info(`Enqueued document ${documentId} for knowledge graph extraction`);
+          await this.graphQueue.enqueue({
+            documentId,
+            workspaceId,
+            extractionRunId,
+            chunkManifestHash,
+          });
+
+          // Confirm dispatch in DB
+          await this.db.updateDocument(documentId, {
+            metadata: {
+              ...updatedMetadata,
+              pendingDispatch: {
+                ...pendingDispatch,
+                enqueuedAt: new Date().toISOString(),
+              },
+            },
+          });
+
+          this.logger.info(
+            `Enqueued document ${documentId} for knowledge graph extraction (run: ${extractionRunId}, job: ${jobId})`,
+          );
         } catch (err: any) {
           this.logger.warn(
-            `Failed to enqueue document ${documentId} for graph extraction: ${err.message}`,
+            `Failed to enqueue document ${documentId} for graph extraction: ${err.message}. Intent remains pending in DB for background recovery.`,
           );
         }
       }

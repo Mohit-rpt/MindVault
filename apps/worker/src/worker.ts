@@ -7,17 +7,34 @@ import { WorkerStorageProvider } from './lib/storage.js';
 import { PrismaWorkerDatabaseService } from './lib/db.js';
 import { createEmbeddingProvider } from './modules/ingestion/embeddings/index.js';
 import { BullMQWorkerGraphQueue } from './lib/graph-queue.js';
+import {
+  GraphExtractionWorker,
+  graphExtractionWorker,
+} from './modules/graph/worker/graph-extraction.worker.js';
+import { DispatchRecoveryService } from './services/dispatch-recovery.service.js';
+import { GraphReconciliationService } from './services/graph-reconciliation.service.js';
 
 export class WorkerService {
   private logger = new Logger('WorkerService');
   private isRunning = false;
   private bullWorker: Worker<ProcessDocumentJobPayload> | null = null;
   private pipeline: DocumentIngestionPipeline | null = null;
+  private graphWorker: GraphExtractionWorker;
+  private recoveryService: DispatchRecoveryService;
+  private reconciliationService: GraphReconciliationService;
 
-  constructor(pipeline?: DocumentIngestionPipeline) {
+  constructor(
+    pipeline?: DocumentIngestionPipeline,
+    graphWorker?: GraphExtractionWorker,
+    recoveryService?: DispatchRecoveryService,
+    reconciliationService?: GraphReconciliationService,
+  ) {
     if (pipeline) {
       this.pipeline = pipeline;
     }
+    this.graphWorker = graphWorker || graphExtractionWorker;
+    this.recoveryService = recoveryService || new DispatchRecoveryService();
+    this.reconciliationService = reconciliationService || new GraphReconciliationService();
   }
 
   public async start(): Promise<void> {
@@ -41,6 +58,26 @@ export class WorkerService {
       const graphQueue = new BullMQWorkerGraphQueue();
       this.pipeline = new DocumentIngestionPipeline(storage, embeddingProvider, db, graphQueue);
     }
+
+    // Step 1: Execute startup graph reconciliation BEFORE starting BullMQ queue consumption.
+    // Guarantees interrupted, unreceipted, or stale graph extraction jobs are reconciled
+    // before new or resumed jobs are processed by this worker.
+    try {
+      this.logger.info('Executing startup graph reconciliation...');
+      const sweepResult = await this.reconciliationService.executeStartupReconciliation();
+      this.logger.info('Startup graph reconciliation completed', sweepResult);
+    } catch (err: any) {
+      this.logger.warn(
+        `Startup graph reconciliation encountered an error: ${err.message}. Worker proceeding safely.`,
+      );
+    }
+
+    // Step 2: Start graph extraction worker runtime
+    await this.graphWorker.start();
+
+    // Step 3: Start background periodic reconciliation and dispatch recovery services
+    this.reconciliationService.start(60000);
+    this.recoveryService.start(60000);
 
     // In test environment, skip spinning up live BullMQ socket unless requested
     if (env.NODE_ENV === 'test') {
@@ -89,10 +126,46 @@ export class WorkerService {
       return;
     }
 
-    this.logger.info('🛑 Stopping worker service, releasing resources...');
+    this.logger.info('🛑 Stopping worker service, initiating graceful drain and deferral...');
+
+    // 1. Pause ingestion polling immediately
     if (this.bullWorker) {
-      await this.bullWorker.close();
+      try {
+        await this.bullWorker.pause(true);
+      } catch (e: any) {
+        this.logger.warn(`Error pausing document worker: ${e.message}`);
+      }
+    }
+
+    // 2. Stop periodic reconciliation service and await in-flight sweep
+    try {
+      await this.reconciliationService.stop();
+    } catch (e: any) {
+      this.logger.warn(`Error stopping reconciliation service: ${e.message}`);
+    }
+
+    // 3. Stop graph worker (cooperative LLM cancellation budget + chunk deferral)
+    try {
+      await this.graphWorker.stop();
+    } catch (e: any) {
+      this.logger.warn(`Error stopping graph worker: ${e.message}`);
+    }
+
+    // 4. Close ingestion BullMQ worker
+    if (this.bullWorker) {
+      try {
+        await this.bullWorker.close(false);
+      } catch (e: any) {
+        this.logger.warn(`Error closing document worker: ${e.message}`);
+      }
       this.bullWorker = null;
+    }
+
+    // 5. Stop dispatch recovery service and await any in-flight sweep
+    try {
+      await this.recoveryService.stop();
+    } catch (e: any) {
+      this.logger.warn(`Error stopping dispatch recovery service: ${e.message}`);
     }
 
     this.isRunning = false;
@@ -105,5 +178,17 @@ export class WorkerService {
 
   public getPipeline(): DocumentIngestionPipeline | null {
     return this.pipeline;
+  }
+
+  public getGraphWorker(): GraphExtractionWorker {
+    return this.graphWorker;
+  }
+
+  public getRecoveryService(): DispatchRecoveryService {
+    return this.recoveryService;
+  }
+
+  public getReconciliationService(): GraphReconciliationService {
+    return this.reconciliationService;
   }
 }
