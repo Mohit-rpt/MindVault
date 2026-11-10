@@ -23,7 +23,12 @@
     "retrieval:evaluate": "pnpm --filter @mindvault/api evaluate",
     "rag:evaluate": "pnpm --filter @mindvault/api evaluate:rag",
     "conversation:evaluate": "pnpm --filter @mindvault/api evaluate:conversation",
-    "graph:evaluate": "pnpm --filter @mindvault/api evaluate:graph"
+    "graph:evaluate": "pnpm --filter @mindvault/api evaluate:graph",
+    "db:seed": "prisma db seed",
+    "demo:check": "pnpm --filter @mindvault/api exec tsx ../../scripts/verify-demo-environment.ts"
+  },
+  "prisma": {
+    "seed": "pnpm --filter @mindvault/api exec tsx ../../prisma/seed.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.2.1"
