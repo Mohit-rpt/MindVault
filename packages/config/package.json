@@ -4,6 +4,7 @@
   "private": true,
   "description": "Shared configurations for MindVault monorepo",
   "main": "index.js",
+  "license": "MIT",
   "files": [
     "tsconfig.base.json",
     "tsconfig.node.json",

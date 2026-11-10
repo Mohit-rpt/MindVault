@@ -5,6 +5,7 @@
   "type": "module",
   "description": "MindVault — AI-Powered Personal Knowledge Operating System",
   "packageManager": "pnpm@12.16.1",
+  "license": "MIT",
   "scripts": {
     "dev:api": "pnpm --filter @mindvault/api dev",
     "dev:worker": "pnpm --filter @mindvault/worker dev",

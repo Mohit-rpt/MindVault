@@ -5,6 +5,7 @@
   "description": "MindVault Core API Service",
   "type": "module",
   "main": "./dist/index.js",
+  "license": "MIT",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
