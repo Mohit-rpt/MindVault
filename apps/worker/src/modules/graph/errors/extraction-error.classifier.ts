@@ -63,7 +63,12 @@ export class ExtractionErrorClassifier {
     const name = typeof err.name === 'string' ? err.name : '';
     const message = typeof err.message === 'string' ? err.message : String(error);
     const code = typeof err.code === 'string' ? err.code : '';
-    const status = typeof err.status === 'number' ? err.status : typeof err.statusCode === 'number' ? err.statusCode : undefined;
+    const status =
+      typeof err.status === 'number'
+        ? err.status
+        : typeof err.statusCode === 'number'
+          ? err.statusCode
+          : undefined;
 
     // 1. FENCED ERRORS (Task 6.4.3)
     if (
@@ -90,7 +95,11 @@ export class ExtractionErrorClassifier {
     }
 
     // 3. EXPLICIT CATEGORY OVERRIDES
-    if (error instanceof ExtractionTransientError || err.isTransient === true || code === 'EXTRACTION_TRANSIENT') {
+    if (
+      error instanceof ExtractionTransientError ||
+      err.isTransient === true ||
+      code === 'EXTRACTION_TRANSIENT'
+    ) {
       return 'TRANSIENT';
     }
 

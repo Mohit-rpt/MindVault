@@ -16,7 +16,8 @@
     "evaluate": "tsx src/modules/retrieval/evaluation/eval.runner.ts",
     "evaluate:rag": "tsx src/modules/generation/evaluation/rag.eval.runner.ts",
     "evaluate:conversation": "tsx src/modules/conversations/evaluation/conversation.eval.runner.ts",
-    "evaluate:graph": "tsx src/modules/graph/evaluation/graph-extraction.eval.runner.ts"
+    "evaluate:graph": "tsx src/modules/graph/evaluation/graph.eval.runner.ts",
+    "evaluate:extraction": "tsx src/modules/graph/evaluation/graph-extraction.eval.runner.ts"
   },
   "dependencies": {
     "@google/genai": "^2.32.0",

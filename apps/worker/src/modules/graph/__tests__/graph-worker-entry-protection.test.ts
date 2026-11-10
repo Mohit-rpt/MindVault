@@ -41,7 +41,11 @@ const { mockPrisma, dbState } = vi.hoisted(() => {
       }),
     },
     $queryRaw: vi.fn().mockImplementation(async (strings: any, ...values: any[]) => {
-      const sql = (strings?.raw ? strings.raw.join(' ') : Array.isArray(strings) ? strings.join(' ') : String(strings));
+      const sql = strings?.raw
+        ? strings.raw.join(' ')
+        : Array.isArray(strings)
+          ? strings.join(' ')
+          : String(strings);
       dbState.queryRawCalls.push({ sql });
 
       // Statement 1: Row lock
@@ -57,24 +61,31 @@ const { mockPrisma, dbState } = vi.hoisted(() => {
         const docId = values[0];
         const doc = dbState.documents.get(docId);
         if (!doc) return [];
-        const isLeaseActive = doc.metadata?.graphWorkerToken != null &&
+        const isLeaseActive =
+          doc.metadata?.graphWorkerToken != null &&
           new Date(doc.metadata?.graphLeaseExpiresAt || 0).getTime() > Date.now();
-        return [{
-          id: doc.id,
-          metadata: doc.metadata,
-          checksum: doc.checksum || 'chk-123',
-          originalName: doc.originalName || 'test.pdf',
-          isLeaseActive,
-          activeRunId: doc.metadata?.extractionRunId || null,
-          activeToken: doc.metadata?.graphWorkerToken || null,
-          activeGen: doc.metadata?.graphLeaseGeneration ?? 0,
-        }];
+        return [
+          {
+            id: doc.id,
+            metadata: doc.metadata,
+            checksum: doc.checksum || 'chk-123',
+            originalName: doc.originalName || 'test.pdf',
+            isLeaseActive,
+            activeRunId: doc.metadata?.extractionRunId || null,
+            activeToken: doc.metadata?.graphWorkerToken || null,
+            activeGen: doc.metadata?.graphLeaseGeneration ?? 0,
+          },
+        ];
       }
 
       return [];
     }),
     $executeRaw: vi.fn().mockImplementation(async (strings: any, ...values: any[]) => {
-      const sql = (strings?.raw ? strings.raw.join(' ') : Array.isArray(strings) ? strings.join(' ') : String(strings));
+      const sql = strings?.raw
+        ? strings.raw.join(' ')
+        : Array.isArray(strings)
+          ? strings.join(' ')
+          : String(strings);
       dbState.executeRawCalls.push({ sql, values });
 
       // Update lease claim
@@ -342,13 +353,15 @@ describe('MindVault Phase 6.4.5 — Stage B: Worker Entry Protection Suite', () 
       let workerGenerationPassed: any = null;
 
       const mockService = {
-        extractFromChunk: vi.fn().mockImplementation(
-          async (_ws, _doc, _chunkId, _content, context) => {
+        extractFromChunk: vi
+          .fn()
+          .mockImplementation(async (_ws, _doc, _chunkId, _content, context) => {
             workerGenerationPassed = context.expectedLeaseGeneration;
             // Simulate that while chunk was extracting, replacement worker claimed generation 3!
-            throw new ExtractionFencedError('Worker fenced: lease generation mismatch (expected 2, found 3)');
-          },
-        ),
+            throw new ExtractionFencedError(
+              'Worker fenced: lease generation mismatch (expected 2, found 3)',
+            );
+          }),
       };
       (worker as any).service = mockService;
 
@@ -391,9 +404,9 @@ describe('MindVault Phase 6.4.5 — Stage B: Worker Entry Protection Suite', () 
 
       // Mock transient HTTP 429
       const mockService = {
-        extractFromChunk: vi.fn().mockRejectedValue(
-          new Error('HTTP 429: Too Many Requests (RESOURCE_EXHAUSTED)'),
-        ),
+        extractFromChunk: vi
+          .fn()
+          .mockRejectedValue(new Error('HTTP 429: Too Many Requests (RESOURCE_EXHAUSTED)')),
       };
       (worker as any).service = mockService;
 
@@ -402,8 +415,8 @@ describe('MindVault Phase 6.4.5 — Stage B: Worker Entry Protection Suite', () 
       );
 
       // Verify conditional release query was executed
-      const releaseQuery = dbState.executeRawCalls.find(
-        (call) => call.sql.includes("'{graphWorkerToken}', 'null'::jsonb"),
+      const releaseQuery = dbState.executeRawCalls.find((call) =>
+        call.sql.includes("'{graphWorkerToken}', 'null'::jsonb"),
       );
       expect(releaseQuery).toBeDefined();
 

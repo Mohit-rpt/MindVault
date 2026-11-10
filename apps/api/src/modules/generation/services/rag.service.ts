@@ -105,6 +105,7 @@ export class RAGService {
   public static async *generateAnswerStream(
     workspaceId: string,
     rawRequest: RAGAnswerRequest | RAGAnswerRequestInput,
+    abortSignal?: AbortSignal,
   ): AsyncIterable<RAGStreamEvent> {
     const request = RAGAnswerRequestSchema.parse(rawRequest);
     const requestId = `rag_${randomUUID()}`;
@@ -113,17 +114,25 @@ export class RAGService {
     yield { type: 'start', requestId };
 
     try {
+      if (abortSignal?.aborted) {
+        throw new Error('CLIENT_ABORTED');
+      }
+
       // 1. Retrieval Execution via Phase 3 RetrievalEngine
       const retrievalStart = performance.now();
-      const retrievalResponse = await RetrievalService.executeSearch(workspaceId, {
-        query: request.query,
-        mode: request.retrieval?.mode || 'hybrid',
-        topK: request.retrieval?.topK || 10,
-        filters: request.retrieval?.filters,
-        enableReranking: request.retrieval?.enableReranking || false,
-        includeContext: true,
-        maxContextTokens: request.retrieval?.maxContextTokens || 3000,
-      });
+      const retrievalResponse = await RetrievalService.executeSearch(
+        workspaceId,
+        {
+          query: request.query,
+          mode: request.retrieval?.mode || 'hybrid',
+          topK: request.retrieval?.topK || 10,
+          filters: request.retrieval?.filters,
+          enableReranking: request.retrieval?.enableReranking || false,
+          includeContext: true,
+          maxContextTokens: request.retrieval?.maxContextTokens || 3000,
+        },
+        abortSignal,
+      );
       const retrievalMs = Math.round((performance.now() - retrievalStart) * 100) / 100;
 
       const context: SearchContextDto = retrievalResponse.context || {
@@ -145,6 +154,10 @@ export class RAGService {
         sources: context.sources,
       };
 
+      if (abortSignal?.aborted) {
+        throw new Error('CLIENT_ABORTED');
+      }
+
       // 2. Build Evidence-Grounded Prompt
       const systemPrompt = getSystemPrompt();
       const prompt = RAGPromptBuilder.buildPrompt({
@@ -161,13 +174,22 @@ export class RAGService {
         systemPrompt,
         temperature: request.generation?.temperature ?? 0.2,
         maxTokens: request.generation?.maxOutputTokens ?? 1024,
+        signal: abortSignal,
       });
 
       for await (const chunk of stream) {
+        if (abortSignal?.aborted) {
+          throw new Error('CLIENT_ABORTED');
+        }
+
         if (chunk.text) {
           accumulatedAnswer += chunk.text;
           yield { type: 'token', text: chunk.text };
         }
+      }
+
+      if (abortSignal?.aborted) {
+        throw new Error('CLIENT_ABORTED');
       }
 
       const generationDurationMs = Math.round((performance.now() - genStart) * 100) / 100;
@@ -187,10 +209,16 @@ export class RAGService {
         },
       };
     } catch (err: any) {
+      const isAbortError =
+        err instanceof Error && (err.message === 'CLIENT_ABORTED' || err.name === 'AbortError');
+      const isAbort = isAbortError || Boolean(abortSignal?.aborted);
+
       yield {
         type: 'error',
-        message: err.message || 'An unexpected error occurred during generation',
-        code: err.code || 'GENERATION_ERROR',
+        message: isAbort
+          ? 'Generation cancelled by client'
+          : err.message || 'An unexpected error occurred during generation',
+        code: isAbort ? 'CLIENT_ABORTED' : err.code || 'GENERATION_ERROR',
       };
     }
   }

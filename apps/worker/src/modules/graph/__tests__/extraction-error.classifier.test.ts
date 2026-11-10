@@ -21,14 +21,38 @@ describe('Task 6.4.4: ExtractionErrorClassifier Unit Tests', () => {
     });
 
     it('classifies HTTP 5xx server errors as TRANSIENT', () => {
-      expect(ExtractionErrorClassifier.classify(Object.assign(new Error('Internal Server Error'), { status: 500 }))).toBe('TRANSIENT');
-      expect(ExtractionErrorClassifier.classify(Object.assign(new Error('Bad Gateway'), { status: 502 }))).toBe('TRANSIENT');
-      expect(ExtractionErrorClassifier.classify(Object.assign(new Error('Service Unavailable'), { status: 503 }))).toBe('TRANSIENT');
-      expect(ExtractionErrorClassifier.classify(Object.assign(new Error('Gateway Timeout'), { status: 504 }))).toBe('TRANSIENT');
+      expect(
+        ExtractionErrorClassifier.classify(
+          Object.assign(new Error('Internal Server Error'), { status: 500 }),
+        ),
+      ).toBe('TRANSIENT');
+      expect(
+        ExtractionErrorClassifier.classify(
+          Object.assign(new Error('Bad Gateway'), { status: 502 }),
+        ),
+      ).toBe('TRANSIENT');
+      expect(
+        ExtractionErrorClassifier.classify(
+          Object.assign(new Error('Service Unavailable'), { status: 503 }),
+        ),
+      ).toBe('TRANSIENT');
+      expect(
+        ExtractionErrorClassifier.classify(
+          Object.assign(new Error('Gateway Timeout'), { status: 504 }),
+        ),
+      ).toBe('TRANSIENT');
     });
 
     it('classifies network socket and connection drop error codes as TRANSIENT', () => {
-      const networkCodes = ['ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'EHOSTUNREACH', 'ENETUNREACH', 'EPIPE', 'ENOTFOUND'];
+      const networkCodes = [
+        'ETIMEDOUT',
+        'ECONNRESET',
+        'ECONNREFUSED',
+        'EHOSTUNREACH',
+        'ENETUNREACH',
+        'EPIPE',
+        'ENOTFOUND',
+      ];
       for (const code of networkCodes) {
         const err = Object.assign(new Error(`Socket failure ${code}`), { code });
         expect(ExtractionErrorClassifier.classify(err)).toBe('TRANSIENT');
@@ -39,7 +63,9 @@ describe('Task 6.4.4: ExtractionErrorClassifier Unit Tests', () => {
       const fetchErr = new TypeError('fetch failed');
       expect(ExtractionErrorClassifier.classify(fetchErr)).toBe('TRANSIENT');
 
-      const undiciErr = Object.assign(new Error('Connection timed out'), { code: 'UND_ERR_CONNECT_TIMEOUT' });
+      const undiciErr = Object.assign(new Error('Connection timed out'), {
+        code: 'UND_ERR_CONNECT_TIMEOUT',
+      });
       expect(ExtractionErrorClassifier.classify(undiciErr)).toBe('TRANSIENT');
     });
 
@@ -56,10 +82,16 @@ describe('Task 6.4.4: ExtractionErrorClassifier Unit Tests', () => {
       const deadlockErr = Object.assign(new Error('deadlock detected'), { code: '40P01' });
       expect(ExtractionErrorClassifier.classify(deadlockErr)).toBe('TRANSIENT');
 
-      const statementTimeoutErr = Object.assign(new Error('canceling statement due to statement timeout'), { code: '57014' });
+      const statementTimeoutErr = Object.assign(
+        new Error('canceling statement due to statement timeout'),
+        { code: '57014' },
+      );
       expect(ExtractionErrorClassifier.classify(statementTimeoutErr)).toBe('TRANSIENT');
 
-      const prismaPoolTimeout = Object.assign(new Error('Timed out fetching a new connection from the pool'), { code: 'P2024' });
+      const prismaPoolTimeout = Object.assign(
+        new Error('Timed out fetching a new connection from the pool'),
+        { code: 'P2024' },
+      );
       expect(ExtractionErrorClassifier.classify(prismaPoolTimeout)).toBe('TRANSIENT');
     });
 
@@ -84,8 +116,12 @@ describe('Task 6.4.4: ExtractionErrorClassifier Unit Tests', () => {
     });
 
     it('classifies missing document and workspace mismatch as PERMANENT', () => {
-      expect(ExtractionErrorClassifier.classify(new Error('Document not found in workspace ws-123'))).toBe('PERMANENT');
-      expect(ExtractionErrorClassifier.classify(new Error('Workspace mismatch: doc belongs to ws-456'))).toBe('PERMANENT');
+      expect(
+        ExtractionErrorClassifier.classify(new Error('Document not found in workspace ws-123')),
+      ).toBe('PERMANENT');
+      expect(
+        ExtractionErrorClassifier.classify(new Error('Workspace mismatch: doc belongs to ws-456')),
+      ).toBe('PERMANENT');
     });
 
     it('classifies ExtractionPermanentError as PERMANENT', () => {
@@ -107,10 +143,14 @@ describe('Task 6.4.4: ExtractionErrorClassifier Unit Tests', () => {
       const fenced = new ExtractionFencedError('Active extraction run superseded');
       expect(ExtractionErrorClassifier.classify(fenced)).toBe('FENCED');
 
-      const errByMsg = new Error('Pre-commit lease validation failed: lease expired or ownership lost before commit');
+      const errByMsg = new Error(
+        'Pre-commit lease validation failed: lease expired or ownership lost before commit',
+      );
       expect(ExtractionErrorClassifier.classify(errByMsg)).toBe('FENCED');
 
-      const errByCode = Object.assign(new Error('Ownership mismatch'), { code: 'EXTRACTION_FENCED' });
+      const errByCode = Object.assign(new Error('Ownership mismatch'), {
+        code: 'EXTRACTION_FENCED',
+      });
       expect(ExtractionErrorClassifier.classify(errByCode)).toBe('FENCED');
     });
   });
@@ -137,12 +177,16 @@ describe('Task 6.4.4: ExtractionErrorClassifier Unit Tests', () => {
 
     it('preserves underlying causes when wrapped in ExtractionTransientError or ExtractionPermanentError', () => {
       const original = new Error('Raw socket closed unexpectedly');
-      const wrappedTransient = new ExtractionTransientError('Failed during model inference', { cause: original });
+      const wrappedTransient = new ExtractionTransientError('Failed during model inference', {
+        cause: original,
+      });
       expect(wrappedTransient.cause).toBe(original);
       expect(wrappedTransient.message).toBe('Failed during model inference');
 
       const schemaFail = new SyntaxError('Bad JSON');
-      const wrappedPermanent = new ExtractionPermanentError('Permanent parsing failure', { cause: schemaFail });
+      const wrappedPermanent = new ExtractionPermanentError('Permanent parsing failure', {
+        cause: schemaFail,
+      });
       expect(wrappedPermanent.cause).toBe(schemaFail);
     });
   });

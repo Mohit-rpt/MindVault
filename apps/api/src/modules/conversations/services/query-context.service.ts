@@ -6,14 +6,17 @@
  * retrieval query for the Phase 3 RetrievalEngine.
  */
 
-import type { ChatMessageDto } from '@mindvault/shared';
+import type { ChatMessageDto, FocusEntityItem } from '@mindvault/shared';
 import { LLMProviderFactory } from '../../generation/providers/provider.factory.js';
+import { EntityContextService } from './entity-context.service.js';
 
 export interface ContextualizedQueryResult {
   originalQuery: string;
   contextualQuery: string;
   wasRewritten: boolean;
-  strategy: 'pass_through' | 'heuristic' | 'llm';
+  strategy: 'pass_through' | 'heuristic' | 'llm' | 'entity_graph';
+  focusEntities?: FocusEntityItem[];
+  resolvedPronouns?: Record<string, string>;
 }
 
 export class QueryContextService {
@@ -27,7 +30,7 @@ export class QueryContextService {
     /^(now[\s,]+let us|now[\s,]+let's|switching topics|changing topic|on another note|by the way|unrelated question)\b/i;
 
   /**
-   * Main entrypoint: Contextualize user query using conversational memory.
+   * Main entrypoint: Contextualize user query using conversational memory and focus entity graph context.
    */
   public static async contextualizeQuery(
     currentQuery: string,
@@ -37,17 +40,25 @@ export class QueryContextService {
   ): Promise<ContextualizedQueryResult> {
     const trimmed = currentQuery.trim();
 
-    // 1. If no history exists, pass through unchanged
+    // 1. Extract conversational focus entities across dialogue history
+    const entityState = EntityContextService.extractFocusEntities(history || [], trimmed, summary);
+
+    const activeEntities = [entityState.primaryEntity, ...entityState.secondaryEntities].filter(
+      (e): e is FocusEntityItem => e !== undefined && e !== null,
+    );
+
+    // 2. If no history exists, pass through unchanged
     if (!history || history.length === 0) {
       return {
         originalQuery: trimmed,
         contextualQuery: trimmed,
         wasRewritten: false,
         strategy: 'pass_through',
+        focusEntities: activeEntities,
       };
     }
 
-    // 2. Check for explicit topic switch (e.g. "Now, let us talk about Prisma migrations")
+    // 3. Check for explicit topic switch (e.g. "Now, let us talk about Prisma migrations")
     if (this.TOPIC_SWITCH_PATTERN.test(trimmed)) {
       const cleanTopic = trimmed
         .replace(this.TOPIC_SWITCH_PATTERN, '')
@@ -55,33 +66,39 @@ export class QueryContextService {
         .replace(/[?!.]+$/, '')
         .trim();
 
-      if (cleanTopic.length > 5) {
+      if (cleanTopic.length > 2) {
         return {
           originalQuery: trimmed,
           contextualQuery: cleanTopic,
           wasRewritten: cleanTopic.toLowerCase() !== trimmed.toLowerCase(),
           strategy: 'heuristic',
+          focusEntities: activeEntities,
         };
       }
     }
 
-    // 3. Check if query is self-contained without referential ambiguity
+    // 4. Check if query is self-contained without referential ambiguity
     const hasPronouns = this.FOLLOW_UP_PRONOUNS.test(trimmed);
     const isElliptical = this.ELLIPTICAL_STARTS.test(trimmed);
     const isTopicReturn = this.TOPIC_RETURN_PATTERN.test(trimmed);
+    const hasDemonstratives = EntityContextService.DEMONSTRATIVE_NOUNS.test(trimmed);
     const isVeryShort = trimmed.split(/\s+/).length <= 4 && (hasPronouns || isElliptical);
 
-    if (!hasPronouns && !isElliptical && !isTopicReturn && !isVeryShort) {
+    if (!hasPronouns && !isElliptical && !isTopicReturn && !hasDemonstratives && !isVeryShort) {
       // Query is already self-contained (e.g. "What is a PostgreSQL GIN index?")
       return {
         originalQuery: trimmed,
         contextualQuery: trimmed,
         wasRewritten: false,
         strategy: 'pass_through',
+        focusEntities: activeEntities,
       };
     }
 
-    // 4. Optional LLM Contextualization if configured and available
+    // 5. Try Graph Focus Entity Resolution first
+    const entityResolution = EntityContextService.resolvePronounsAndEllipsis(trimmed, entityState);
+
+    // 6. Optional LLM Contextualization if configured and available
     if (options?.useLLM) {
       try {
         const llmResult = await this.rewriteWithLLM(trimmed, history, summary);
@@ -91,14 +108,28 @@ export class QueryContextService {
             contextualQuery: llmResult,
             wasRewritten: true,
             strategy: 'llm',
+            focusEntities: activeEntities,
+            resolvedPronouns: entityResolution.resolvedPronouns,
           };
         }
       } catch {
-        // Fall back safely to deterministic heuristic resolution on LLM timeout or error
+        // Fall back safely to entity resolution or deterministic heuristics
       }
     }
 
-    // 5. Deterministic Heuristic Reference Resolution
+    // 7. If Entity Context Service successfully resolved the reference, use it
+    if (entityResolution.wasResolved) {
+      return {
+        originalQuery: trimmed,
+        contextualQuery: entityResolution.resolvedQuery,
+        wasRewritten: true,
+        strategy: 'entity_graph',
+        focusEntities: activeEntities,
+        resolvedPronouns: entityResolution.resolvedPronouns,
+      };
+    }
+
+    // 8. Deterministic Heuristic Reference Resolution Fallback
     const heuristicResult = this.resolveHeuristically(trimmed, history, summary);
     const wasRewritten = heuristicResult.toLowerCase() !== trimmed.toLowerCase();
 
@@ -107,6 +138,8 @@ export class QueryContextService {
       contextualQuery: wasRewritten ? heuristicResult : trimmed,
       wasRewritten,
       strategy: 'heuristic',
+      focusEntities: activeEntities,
+      resolvedPronouns: entityResolution.resolvedPronouns,
     };
   }
 

@@ -206,7 +206,10 @@ export class GraphExtractionService {
       (typeof doc.metadata === 'string' ? JSON.parse(doc.metadata) : doc.metadata) || {};
     const currentCheckpoint = currentMeta.graphCheckpoint as GraphChunkCheckpoint | undefined;
 
-    if (currentMeta.chunkManifestHash && currentMeta.chunkManifestHash !== input.chunkManifestHash) {
+    if (
+      currentMeta.chunkManifestHash &&
+      currentMeta.chunkManifestHash !== input.chunkManifestHash
+    ) {
       throw new ExtractionFencedError(
         `Worker fenced: source manifest hash mismatch (expected ${input.chunkManifestHash}, found ${currentMeta.chunkManifestHash})`,
       );
@@ -308,8 +311,7 @@ export class GraphExtractionService {
         else if (valResult.failureReason === 'SELF_LOOP') validationFailures.selfLoops++;
         else if (valResult.failureReason === 'UNSUPPORTED_RELATION_TYPE')
           validationFailures.unsupportedRelationType++;
-        else if (valResult.failureReason === 'LOW_CONFIDENCE')
-          validationFailures.lowConfidence++;
+        else if (valResult.failureReason === 'LOW_CONFIDENCE') validationFailures.lowConfidence++;
         else if (valResult.failureReason === 'INVALID_EVIDENCE')
           validationFailures.invalidEvidence++;
         continue;

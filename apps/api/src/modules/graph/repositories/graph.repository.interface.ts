@@ -1,4 +1,20 @@
 import { EntityType } from '@prisma/client';
+import type {
+  RawNeighborhoodRelationRow,
+  RawPathFinderRow,
+  NeighborhoodQueryParams,
+  PathFinderQueryParams,
+  GraphEvidenceQueryParams,
+  GraphEvidenceQueryResult,
+  DiscoveredSeedEntity,
+  SeedDiscoveryQueryParams,
+  GraphEntityListQuery,
+  GraphEntityListResponseDto,
+  GraphEntityDetailDto,
+  RelationEvidenceDetailDto,
+  GraphOverviewDto,
+  GraphIntegrityReport,
+} from '@mindvault/shared';
 
 export interface CreateEntityInput {
   workspaceId: string;
@@ -92,6 +108,7 @@ export interface GraphRelationRecord {
 
 export interface IGraphRepository {
   findEntityById(workspaceId: string, id: string): Promise<GraphEntityRecord | null>;
+  findEntitiesByIds(workspaceId: string, ids: string[]): Promise<GraphEntityRecord[]>;
   findEntityByName(workspaceId: string, normalizedName: string): Promise<GraphEntityRecord | null>;
   findEntityByAlias(
     workspaceId: string,
@@ -129,4 +146,22 @@ export interface IGraphRepository {
     chunkId: string,
   ): Promise<{ id: string } | null>;
   createEvidenceIdempotent(input: CreateEvidenceInput): Promise<{ id: string }>;
+  traverseNeighborhood(params: NeighborhoodQueryParams): Promise<RawNeighborhoodRelationRow[]>;
+  findPaths(params: PathFinderQueryParams): Promise<RawPathFinderRow[]>;
+  discoverEntitySeeds(params: SeedDiscoveryQueryParams): Promise<DiscoveredSeedEntity[]>;
+  searchGraphEvidence(params: GraphEvidenceQueryParams): Promise<GraphEvidenceQueryResult>;
+  listEntities(
+    workspaceId: string,
+    options?: GraphEntityListQuery,
+  ): Promise<GraphEntityListResponseDto>;
+  getEntityDetail(workspaceId: string, entityId: string): Promise<GraphEntityDetailDto | null>;
+  getRelationEvidenceDetail(
+    workspaceId: string,
+    relationId: string,
+  ): Promise<RelationEvidenceDetailDto | null>;
+  getGraphOverview(workspaceId: string): Promise<GraphOverviewDto>;
+  checkGraphIntegrity(workspaceId: string): Promise<GraphIntegrityReport>;
+  cleanupOrphanedGraphElements(
+    workspaceId: string,
+  ): Promise<{ deletedEntities: number; deletedRelations: number }>;
 }

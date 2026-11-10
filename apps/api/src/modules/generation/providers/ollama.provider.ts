@@ -88,6 +88,15 @@ export class OllamaProvider implements LLMProvider {
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     const startTime = performance.now();
 
+    const onSignalAbort = () => controller.abort();
+    if (options?.signal) {
+      if (options.signal.aborted) {
+        controller.abort();
+      } else {
+        options.signal.addEventListener('abort', onSignalAbort, { once: true });
+      }
+    }
+
     try {
       const response = await fetch(`${this.baseUrl}/api/generate`, {
         method: 'POST',
@@ -105,8 +114,6 @@ export class OllamaProvider implements LLMProvider {
         }),
         signal: controller.signal,
       });
-
-      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => '');
@@ -132,11 +139,18 @@ export class OllamaProvider implements LLMProvider {
         finishReason: data.done_reason || 'stop',
       };
     } catch (err: any) {
-      clearTimeout(timeoutId);
+      if (options?.signal?.aborted) {
+        throw new Error('CLIENT_ABORTED');
+      }
       if (err.name === 'AbortError') {
         throw new Error(`Ollama generation timed out after ${timeoutMs}ms`);
       }
       throw err;
+    } finally {
+      clearTimeout(timeoutId);
+      if (options?.signal) {
+        options.signal.removeEventListener('abort', onSignalAbort);
+      }
     }
   }
 
@@ -148,7 +162,22 @@ export class OllamaProvider implements LLMProvider {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
+    const onSignalAbort = () => controller.abort();
+    if (options?.signal) {
+      if (options.signal.aborted) {
+        controller.abort();
+      } else {
+        options.signal.addEventListener('abort', onSignalAbort, { once: true });
+      }
+    }
+
+    let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+
     try {
+      if (options?.signal?.aborted) {
+        return;
+      }
+
       const response = await fetch(`${this.baseUrl}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -176,51 +205,37 @@ export class OllamaProvider implements LLMProvider {
       }
 
       // Convert Node web ReadableStream into an async reader
-      const reader = response.body.getReader();
+      reader = response.body.getReader();
       const decoder = new TextDecoder('utf-8');
       let buffer = '';
 
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
-
-          for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed) continue;
-
-            try {
-              const parsed = JSON.parse(trimmed) as {
-                response?: string;
-                done?: boolean;
-                done_reason?: string;
-              };
-
-              if (parsed.response) {
-                yield {
-                  text: parsed.response,
-                  isFinished: Boolean(parsed.done),
-                  finishReason: parsed.done_reason,
-                };
-              }
-
-              if (parsed.done) {
-                return;
-              }
-            } catch {
-              // Ignore malformed partial chunks and continue
-            }
-          }
+      while (true) {
+        if (options?.signal?.aborted) {
+          return;
         }
 
-        // Handle any trailing text in buffer
-        if (buffer.trim()) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (options?.signal?.aborted) {
+            return;
+          }
+
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+
           try {
-            const parsed = JSON.parse(buffer.trim());
+            const parsed = JSON.parse(trimmed) as {
+              response?: string;
+              done?: boolean;
+              done_reason?: string;
+            };
+
             if (parsed.response) {
               yield {
                 text: parsed.response,
@@ -228,19 +243,52 @@ export class OllamaProvider implements LLMProvider {
                 finishReason: parsed.done_reason,
               };
             }
+
+            if (parsed.done) {
+              return;
+            }
           } catch {
-            // End of buffer
+            // Ignore malformed partial chunks and continue
           }
         }
-      } finally {
-        reader.releaseLock();
+      }
+
+      // Handle any trailing text in buffer
+      if (buffer.trim() && !options?.signal?.aborted) {
+        try {
+          const parsed = JSON.parse(buffer.trim());
+          if (parsed.response) {
+            yield {
+              text: parsed.response,
+              isFinished: Boolean(parsed.done),
+              finishReason: parsed.done_reason,
+            };
+          }
+        } catch {
+          // End of buffer
+        }
       }
     } catch (err: any) {
-      clearTimeout(timeoutId);
+      if (options?.signal?.aborted) {
+        return;
+      }
       if (err.name === 'AbortError') {
         throw new Error(`Ollama generation stream timed out after ${timeoutMs}ms`);
       }
       throw err;
+    } finally {
+      clearTimeout(timeoutId);
+      if (options?.signal) {
+        options.signal.removeEventListener('abort', onSignalAbort);
+      }
+      if (reader) {
+        try {
+          await reader.cancel();
+        } catch {
+          // Ignore cancel errors if stream is closed
+        }
+        reader.releaseLock();
+      }
     }
   }
 }

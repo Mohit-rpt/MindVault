@@ -283,7 +283,7 @@ export interface ProcessDocumentJobPayload {
 // Phase 3: Retrieval Engine, Hybrid Search & Intelligence Schemas & Contracts
 // ---------------------------------------------------------------------------
 
-export const RetrievalModeEnum = z.enum(['hybrid', 'semantic', 'keyword']);
+export const RetrievalModeEnum = z.enum(['hybrid', 'semantic', 'keyword', 'graph', 'graphrag']);
 export type RetrievalMode = z.infer<typeof RetrievalModeEnum>;
 
 export const RetrievalFiltersSchema = z
@@ -316,6 +316,7 @@ export const SearchRequestSchema = z.object({
   maxContextTokens: z.coerce.number().int().min(100).max(16000).default(3000),
   filters: RetrievalFiltersSchema.optional(),
   enableReranking: z.boolean().default(false),
+  focusEntityHints: z.array(z.string()).max(10).optional(),
 });
 export type SearchRequest = z.infer<typeof SearchRequestSchema>;
 
@@ -327,7 +328,7 @@ export interface SearchResultItem {
   chunkIndex: number;
   rank: number;
   score: number;
-  retrievalSources: Array<'semantic' | 'keyword'>;
+  retrievalSources: Array<'semantic' | 'keyword' | 'graph'>;
   citationId: string;
   pageStart: number | null;
   pageEnd: number | null;
@@ -348,12 +349,25 @@ export interface ContextSourceItem {
   rank: number;
   score: number;
   retrievalSources: string[];
+  supportedRelationIds?: string[];
+}
+
+export interface ContextGraphRelationDto {
+  relationId: string;
+  sourceCanonicalName: string;
+  targetCanonicalName: string;
+  relationType: string;
+  confidence: number;
+  depth: number;
+  supportingCitationIds: string[];
+  formattedProposition: string;
 }
 
 export interface SearchContextDto {
   content: string;
   tokenEstimate: number;
   sources: ContextSourceItem[];
+  graphRelations?: ContextGraphRelationDto[];
 }
 
 export interface SearchTimingMetadata {
@@ -361,6 +375,8 @@ export interface SearchTimingMetadata {
   embeddingGenerationMs?: number;
   semanticSearchMs?: number;
   keywordSearchMs?: number;
+  graphSearchMs?: number;
+  graphSeedDiscoveryMs?: number;
   fusionMs?: number;
   rerankingMs?: number;
   contextAssemblyMs?: number;
@@ -370,6 +386,8 @@ export interface SearchTimingMetadata {
 export interface SearchMetadataDto {
   semanticSearchUsed: boolean;
   keywordSearchUsed: boolean;
+  graphSearchUsed?: boolean;
+  graphError?: 'TIMEOUT' | 'FAILED';
   rerankingApplied: boolean;
   totalResults: number;
   query: string;
@@ -505,6 +523,7 @@ export interface LLMGenerateOptions {
     mimeType: string;
     data: string;
   };
+  signal?: AbortSignal;
 }
 
 export interface LLMGenerateResult {
@@ -667,6 +686,7 @@ export type ConversationStreamEvent =
       totalSources: number;
       retrievalMode: RetrievalMode;
       contextualQuery?: string;
+      focusEntities?: string[];
       timings: { retrievalMs: number; contextualizationMs?: number };
     }
   | { type: 'sources'; sources: ContextSourceItem[] }
@@ -679,6 +699,29 @@ export type ConversationStreamEvent =
       metadata?: Record<string, unknown>;
     }
   | { type: 'error'; message: string; code?: string };
+
+// ---------------------------------------------------------------------------
+// Phase 6.7: Conversational Graph Context & Focus Entities
+// ---------------------------------------------------------------------------
+
+export interface FocusEntityItem {
+  name: string;
+  canonicalName: string;
+  entityType?: string;
+  entityId?: string;
+  salience: number; // 0.0 - 1.0 (recency-weighted)
+  mentionCount: number;
+  lastTurnIndex: number;
+  source: 'user_query' | 'graph_evidence' | 'assistant_grounding';
+}
+
+export interface EntityContextState {
+  primaryEntity?: FocusEntityItem;
+  secondaryEntities: FocusEntityItem[];
+  activeTopic?: string;
+  topicSwitched?: boolean;
+  topicReturned?: boolean;
+}
 
 // ---------------------------------------------------------------------------
 // Phase 6: Knowledge Graph & Entity-Relation Extraction Schemas & Contracts
@@ -931,7 +974,9 @@ export function computeRelationLockKey(workspaceId: string, relationId: string):
  * Sorts relation objects in deterministic ascending numerical signed 64-bit lock order.
  */
 export function sortRelationsByLockKey<T extends { lockKey: bigint }>(relations: T[]): T[] {
-  return [...relations].sort((a, b) => (a.lockKey < b.lockKey ? -1 : a.lockKey > b.lockKey ? 1 : 0));
+  return [...relations].sort((a, b) =>
+    a.lockKey < b.lockKey ? -1 : a.lockKey > b.lockKey ? 1 : 0,
+  );
 }
 
 /**
@@ -990,3 +1035,322 @@ else
   return 0
 end
 `.trim();
+
+// ---------------------------------------------------------------------------
+// Phase 6.5: Bounded Graph Traversal & Path Discovery Contracts
+// ---------------------------------------------------------------------------
+
+export type GraphDirection = 'both' | 'outgoing' | 'incoming';
+export const GraphDirectionEnum = z.enum(['both', 'outgoing', 'incoming']);
+
+export const GraphNeighborhoodQuerySchema = z.object({
+  depth: z.coerce.number().int().min(1).max(3).default(1),
+  limit: z.coerce.number().int().min(5).max(100).default(30),
+  direction: GraphDirectionEnum.default('both'),
+});
+export type GraphNeighborhoodQuery = z.infer<typeof GraphNeighborhoodQuerySchema>;
+
+export const PathFinderRequestSchema = z.object({
+  sourceEntityId: z.string().uuid(),
+  targetEntityId: z.string().uuid(),
+  maxDepth: z.coerce.number().int().min(1).max(4).default(3),
+  limit: z.coerce.number().int().min(1).max(10).default(5),
+});
+export type PathFinderRequest = z.infer<typeof PathFinderRequestSchema>;
+
+export interface GraphNeighborhoodNodeDto {
+  id: string;
+  label: string;
+  entityType: EntityType | string;
+  description: string | null;
+  degree: number;
+  depth: number;
+}
+
+export interface GraphNeighborhoodEdgeDto {
+  id: string;
+  source: string;
+  target: string;
+  label: string;
+  description: string | null;
+  weight: number;
+  confidence: number;
+  evidenceCount: number;
+}
+
+export interface GraphNeighborhoodDto {
+  centerEntityId: string;
+  depth: number;
+  totalNodes: number;
+  totalEdges: number;
+  nodes: GraphNeighborhoodNodeDto[];
+  edges: GraphNeighborhoodEdgeDto[];
+}
+
+export interface GraphPathNodeDto {
+  id: string;
+  name: string;
+}
+
+export interface GraphPathRelationDto {
+  id: string;
+  type: string;
+}
+
+export interface GraphDiscoveredPathDto {
+  depth: number;
+  weight: number;
+  confidence: number;
+  pathEntities: GraphPathNodeDto[];
+  pathRelations: GraphPathRelationDto[];
+}
+
+export interface GraphPathDto {
+  sourceEntityId: string;
+  targetEntityId: string;
+  pathsFound: number;
+  paths: GraphDiscoveredPathDto[];
+}
+
+export interface RawNeighborhoodRelationRow {
+  relation_id: string;
+  depth: number;
+  source_id: string;
+  source_name: string;
+  source_type: string;
+  source_description: string | null;
+  relation_type: string;
+  relation_description: string | null;
+  target_id: string;
+  target_name: string;
+  target_type: string;
+  target_description: string | null;
+  weight: number;
+  confidence: number;
+  evidence_count: number;
+}
+
+export interface RawPathFinderRow {
+  relation_id: string;
+  entity_path: string[];
+  relation_path: string[];
+  type_path: string[];
+  depth: number;
+  weight: number;
+  confidence: number;
+}
+
+export interface NeighborhoodQueryParams {
+  workspaceId: string;
+  centerEntityId: string;
+  direction?: GraphDirection;
+  maxDepth?: number;
+  limit?: number;
+}
+
+export interface PathFinderQueryParams {
+  workspaceId: string;
+  sourceEntityId: string;
+  targetEntityId: string;
+  maxDepth?: number;
+  limit?: number;
+}
+
+// ==========================================
+// Phase 6.6: GraphRAG Retrieval Types
+// ==========================================
+
+export interface DiscoveredSeedEntity {
+  entityId: string;
+  canonicalName: string;
+  entityType: string;
+  seedScore: number;
+  matchStrategy: 'LEXICAL' | 'ALIAS' | 'SEMANTIC';
+}
+
+export interface SeedDiscoveryQueryParams {
+  workspaceId: string;
+  ngrams: string[];
+  queryVector?: number[];
+  maxSeeds?: number;
+}
+
+export interface GraphEvidenceQueryParams {
+  workspaceId: string;
+  seedEntityIds: string[];
+  topK?: number; // default 20, max 50
+  minConfidence?: number; // default 0.6
+  minWeight?: number; // default 0.5
+}
+
+export interface RawGraphChunkRow {
+  chunkId: string;
+  documentId: string;
+  workspaceId: string;
+  chunkIndex: number;
+  content: string;
+  tokenCount: number;
+  pageStart: number | null;
+  pageEnd: number | null;
+  metadata: Record<string, unknown>;
+  createdAt: Date;
+  docOriginalName: string;
+  docExtension: string;
+  docStatus: string;
+  docPageCount: number | null;
+  score: number;
+  supportedRelationsCount: number;
+  supportedRelationIds: string[];
+  relationTypes: string[];
+  graphRelations?: RawGraphRelationRow[];
+}
+
+export interface RawGraphRelationRow {
+  relationId: string;
+  sourceEntityId: string;
+  sourceCanonicalName: string;
+  targetEntityId: string;
+  targetCanonicalName: string;
+  relationType: string;
+  weight: number;
+  confidence: number;
+  depth: number;
+  evidenceChunkIds: string[];
+}
+
+export interface GraphEvidenceQueryResult {
+  chunks: RawGraphChunkRow[];
+  relations: RawGraphRelationRow[];
+}
+
+// ==========================================
+// Phase 6.8: Graph Explorer & Evaluation Types
+// ==========================================
+
+export const GraphEntityListQuerySchema = z.object({
+  search: z.string().trim().optional(),
+  entityType: z.string().trim().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(30),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+export type GraphEntityListQuery = z.input<typeof GraphEntityListQuerySchema>;
+export type GraphEntityListQueryOutput = z.output<typeof GraphEntityListQuerySchema>;
+
+export interface GraphEntityListItemDto {
+  id: string;
+  canonicalName: string;
+  entityType: string;
+  description: string | null;
+  mentionCount: number;
+  degree: number;
+  aliases: string[];
+  createdAt: string;
+}
+
+export interface GraphEntityListResponseDto {
+  items: GraphEntityListItemDto[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface GraphEntityDocumentReferenceDto {
+  documentId: string;
+  documentName: string;
+  mentionCount: number;
+}
+
+export interface GraphEntityDetailDto {
+  id: string;
+  canonicalName: string;
+  entityType: string;
+  description: string | null;
+  aliases: string[];
+  mentionCount: number;
+  inDegree: number;
+  outDegree: number;
+  totalDegree: number;
+  createdAt: string;
+  documentReferences: GraphEntityDocumentReferenceDto[];
+}
+
+export interface RelationEvidenceChunkDto {
+  evidenceId: string;
+  chunkId: string;
+  documentId: string;
+  documentName: string;
+  pageStart: number | null;
+  pageEnd: number | null;
+  snippet: string;
+  confidence: number;
+}
+
+export interface RelationEvidenceDetailDto {
+  relationId: string;
+  relationType: string;
+  sourceEntity: {
+    id: string;
+    canonicalName: string;
+    entityType: string;
+  };
+  targetEntity: {
+    id: string;
+    canonicalName: string;
+    entityType: string;
+  };
+  confidence: number;
+  weight: number;
+  evidence: RelationEvidenceChunkDto[];
+}
+
+export interface GraphOverviewEntityDto {
+  id: string;
+  canonicalName: string;
+  entityType: string;
+  degree: number;
+}
+
+export interface GraphOverviewDto {
+  totalEntities: number;
+  totalRelations: number;
+  entityTypeBreakdown: Record<string, number>;
+  topConnectedEntities: GraphOverviewEntityDto[];
+}
+
+export interface GraphEvalBenchmarkItem {
+  id: string;
+  name: string;
+  type:
+    | 'entity_resolution'
+    | 'multi_hop_traversal'
+    | 'cross_document_relation'
+    | 'evidence_provenance'
+    | 'adversarial_injection';
+  scenario: string;
+  query: string;
+  expectedEntities?: string[];
+  expectedRelations?: Array<{ source: string; target: string; type: string }>;
+  expectedEvidenceChunkCount?: number;
+  minGroundingScore?: number;
+}
+
+export interface GraphEvalMetricResult {
+  benchmarkCount: number;
+  passedCount: number;
+  failedCount: number;
+  extractionPrecision: number;
+  extractionRecall: number;
+  entityResolutionAccuracy: number;
+  relationshipEvidenceCoverage: number;
+  multiHopPathRecall: number;
+  durationMs: number;
+  details: Array<{ id: string; name: string; passed: boolean; score: number; details: string }>;
+}
+export interface GraphIntegrityReport {
+  orphanedEntities: string[];
+  unsupportedRelations: string[];
+  danglingEvidence: string[];
+  totalCheckedEntities: number;
+  totalCheckedRelations: number;
+  isHealthy: boolean;
+}

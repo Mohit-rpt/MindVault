@@ -7,17 +7,10 @@
 
 import type { Redis } from 'ioredis';
 import type { PrismaClient } from '@prisma/client';
-import {
-  LUA_RENEW_LEASE_SCRIPT,
-  LUA_RELEASE_LEASE_SCRIPT,
-} from '@mindvault/shared';
+import { LUA_RENEW_LEASE_SCRIPT, LUA_RELEASE_LEASE_SCRIPT } from '@mindvault/shared';
 import { Logger } from '../../../utils/logger.js';
 
-export type HeartbeatLifecycleState =
-  | 'ACTIVE'
-  | 'PREPARING_DEFERRAL'
-  | 'DEFERRED'
-  | 'TERMINATED';
+export type HeartbeatLifecycleState = 'ACTIVE' | 'PREPARING_DEFERRAL' | 'DEFERRED' | 'TERMINATED';
 
 export interface HeartbeatManagerOptions {
   documentId: string;
@@ -94,11 +87,10 @@ export class GraphHeartbeatManager {
     }
 
     this.isRenewing = true;
-    this.activeRenewalPromise = this.executeDualRenewal()
-      .finally(() => {
-        this.isRenewing = false;
-        this.activeRenewalPromise = null;
-      });
+    this.activeRenewalPromise = this.executeDualRenewal().finally(() => {
+      this.isRenewing = false;
+      this.activeRenewalPromise = null;
+    });
 
     return this.activeRenewalPromise;
   }
@@ -140,8 +132,9 @@ export class GraphHeartbeatManager {
 
     // Step 2: PostgreSQL Durable Lease Renewal (Timezone-safe UTC query)
     try {
-      const rowsUpdated = this.leaseGeneration !== undefined
-        ? await this.prisma.$executeRaw`
+      const rowsUpdated =
+        this.leaseGeneration !== undefined
+          ? await this.prisma.$executeRaw`
             UPDATE "Document"
             SET metadata = jsonb_set(
               jsonb_set(
@@ -159,7 +152,7 @@ export class GraphHeartbeatManager {
               AND metadata->>'graphStatus' = 'PROCESSING'
               AND (metadata->>'graphLeaseExpiresAt')::timestamptz > clock_timestamp();
           `
-        : await this.prisma.$executeRaw`
+          : await this.prisma.$executeRaw`
             UPDATE "Document"
             SET metadata = jsonb_set(
               jsonb_set(
@@ -178,7 +171,9 @@ export class GraphHeartbeatManager {
           `;
 
       if (rowsUpdated === 0) {
-        this.logger.warn('PostgreSQL lease extension CAS returned 0 rows (run superseded or expired); fencing worker');
+        this.logger.warn(
+          'PostgreSQL lease extension CAS returned 0 rows (run superseded or expired); fencing worker',
+        );
         // Release Redis lease immediately to prevent zombie lock retention
         await this.releaseRedisLeaseSilently();
         this.triggerFencing();
@@ -262,12 +257,7 @@ export class GraphHeartbeatManager {
   private async releaseRedisLeaseSilently(): Promise<void> {
     try {
       const redisKey = `mindvault:graph:lease:${this.documentId}`;
-      await this.redisClient.eval(
-        LUA_RELEASE_LEASE_SCRIPT,
-        1,
-        redisKey,
-        this.workerToken,
-      );
+      await this.redisClient.eval(LUA_RELEASE_LEASE_SCRIPT, 1, redisKey, this.workerToken);
     } catch (e: any) {
       this.logger.debug(`Silently ignored Redis lease release error: ${e.message}`);
     }

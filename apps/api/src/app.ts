@@ -11,6 +11,7 @@ import { documentRouter } from './modules/document/document.routes.js';
 import { retrievalRoutes } from './modules/retrieval/retrieval.routes.js';
 import { createGenerationRouter } from './modules/generation/generation.routes.js';
 import { createConversationRouter } from './modules/conversations/conversation.routes.js';
+import { createGraphRouter } from './modules/graph/routes/graph.routes.js';
 
 export function createApp(): Express {
   const app = express();
@@ -39,6 +40,7 @@ export function createApp(): Express {
   app.use('/api/retrieval', retrievalRoutes);
   app.use('/api/rag', createGenerationRouter());
   app.use('/api/conversations', createConversationRouter());
+  app.use('/api/graph', createGraphRouter());
 
   // 404 Handler
   app.use((req: Request, res: Response) => {

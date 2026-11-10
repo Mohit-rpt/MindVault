@@ -24,7 +24,6 @@ describe('MindVault Phase 6.4.5 — Stage A: GraphReconciliationService Suite', 
   let service: GraphReconciliationService;
 
   beforeEach(() => {
-
     mockPrisma = {
       $transaction: vi.fn().mockImplementation(async (callback) => {
         return await callback(mockPrisma);
@@ -84,8 +83,14 @@ describe('MindVault Phase 6.4.5 — Stage A: GraphReconciliationService Suite', 
         $executeRaw: vi.fn().mockResolvedValue(1),
       };
 
-      const service1 = new GraphReconciliationService(prisma1 as unknown as PrismaClient, mockQueue);
-      const service2 = new GraphReconciliationService(prisma2 as unknown as PrismaClient, mockQueue);
+      const service1 = new GraphReconciliationService(
+        prisma1 as unknown as PrismaClient,
+        mockQueue,
+      );
+      const service2 = new GraphReconciliationService(
+        prisma2 as unknown as PrismaClient,
+        mockQueue,
+      );
 
       const [res1, res2] = await Promise.all([
         service1.executeStartupReconciliation(),

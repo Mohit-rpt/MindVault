@@ -119,6 +119,10 @@ export class ConversationRAGService {
       const historyContext = recentHistory.filter((m) => m.id !== userMessage.id);
 
       // 5. Contextualize query for follow-up reference resolution
+      if (abortSignal?.aborted) {
+        throw new Error('CLIENT_ABORTED');
+      }
+
       const ctxStart = performance.now();
       const queryContext = await QueryContextService.contextualizeQuery(
         request.content,
@@ -128,17 +132,27 @@ export class ConversationRAGService {
       );
       const contextualizationMs = Math.round((performance.now() - ctxStart) * 100) / 100;
 
-      // 6. Execute fresh hybrid retrieval in workspace
+      if (abortSignal?.aborted) {
+        throw new Error('CLIENT_ABORTED');
+      }
+
+      // 6. Execute fresh hybrid retrieval in workspace with focus entity hints
+      const focusEntityHints = queryContext.focusEntities?.map((e) => e.canonicalName);
       const retrievalStart = performance.now();
-      const retrievalResponse = await RetrievalService.executeSearch(workspaceId, {
-        query: queryContext.contextualQuery,
-        mode: request.retrieval?.mode || 'hybrid',
-        topK: request.retrieval?.topK || 5,
-        filters: request.retrieval?.filters,
-        enableReranking: request.retrieval?.enableReranking || false,
-        includeContext: true,
-        maxContextTokens: request.retrieval?.maxContextTokens || 3000,
-      });
+      const retrievalResponse = await RetrievalService.executeSearch(
+        workspaceId,
+        {
+          query: queryContext.contextualQuery,
+          mode: request.retrieval?.mode || 'hybrid',
+          topK: request.retrieval?.topK || 5,
+          filters: request.retrieval?.filters,
+          enableReranking: request.retrieval?.enableReranking || false,
+          includeContext: true,
+          maxContextTokens: request.retrieval?.maxContextTokens || 3000,
+          focusEntityHints,
+        },
+        abortSignal,
+      );
       const retrievalMs = Math.round((performance.now() - retrievalStart) * 100) / 100;
 
       const context: SearchContextDto = retrievalResponse.context || {
@@ -153,6 +167,7 @@ export class ConversationRAGService {
         totalSources: context.sources.length,
         retrievalMode: retrievalResponse.mode,
         contextualQuery: queryContext.contextualQuery,
+        focusEntities: focusEntityHints,
         timings: { retrievalMs, contextualizationMs },
       };
 
@@ -185,6 +200,7 @@ export class ConversationRAGService {
         temperature: request.generation?.temperature ?? env.LLM_TEMPERATURE ?? 0.2,
         maxTokens: request.generation?.maxOutputTokens ?? env.LLM_MAX_OUTPUT_TOKENS ?? 512,
         image: request.image,
+        signal: abortSignal,
       });
 
       for await (const chunk of stream) {
@@ -196,6 +212,10 @@ export class ConversationRAGService {
           accumulatedText += chunk.text;
           yield { type: 'token', text: chunk.text };
         }
+      }
+
+      if (abortSignal?.aborted) {
+        throw new Error('CLIENT_ABORTED');
       }
 
       const generationDurationMs = Math.round((performance.now() - genStart) * 100) / 100;
@@ -218,8 +238,13 @@ export class ConversationRAGService {
             provider: provider.providerName,
             model: provider.modelName,
             grounding,
+            retrievalMode: retrievalResponse.mode,
             contextualQuery: queryContext.contextualQuery,
             wasRewritten: queryContext.wasRewritten,
+            focusEntities: queryContext.focusEntities ?? [],
+            ...(context.graphRelations
+              ? { graphRelationsCount: context.graphRelations.length }
+              : {}),
             timings: {
               retrievalMs,
               generationDurationMs,

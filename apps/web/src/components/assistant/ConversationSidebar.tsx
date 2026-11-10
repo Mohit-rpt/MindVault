@@ -9,6 +9,7 @@ import {
   MessageSquare,
   FileText,
   Search as SearchIcon,
+  Network,
   Settings,
   Sun,
   Moon,
@@ -28,8 +29,8 @@ export interface SidebarProps {
   onRenameSession: (sessionId: string, newTitle: string) => void;
   onDeleteSession: (sessionId: string) => void;
   isLoadingSessions: boolean;
-  activeView: 'chat' | 'documents' | 'search';
-  onSelectView: (view: 'chat' | 'documents' | 'search') => void;
+  activeView: 'chat' | 'documents' | 'search' | 'graph';
+  onSelectView: (view: 'chat' | 'documents' | 'search' | 'graph') => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   isMobileOpen: boolean;
@@ -199,6 +200,71 @@ export const ConversationSidebar: React.FC<SidebarProps> = ({
             >
               <SearchIcon className="w-3.5 h-3.5 text-theme-accent" />
               <span>Deep Vault Search</span>
+            </button>
+
+            <button
+              onClick={() => {
+                onSelectView('graph');
+                onCloseMobile();
+              }}
+              className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                activeView === 'graph'
+                  ? 'bg-theme-surface text-theme-text shadow-subtle border border-theme-border/60'
+                  : 'text-theme-text-secondary hover:text-theme-text hover:bg-theme-surface-secondary/60'
+              }`}
+            >
+              <Network className="w-3.5 h-3.5 text-theme-accent" />
+              <span>Knowledge Graph</span>
+            </button>
+          </div>
+        )}
+
+        {/* Collapsed Icons Navigation */}
+        {isCollapsed && (
+          <div className="space-y-1.5 pt-2 border-t border-theme-border/40 flex flex-col items-center">
+            <button
+              onClick={() => onSelectView('chat')}
+              className={`p-2 rounded-xl transition-colors ${
+                activeView === 'chat'
+                  ? 'bg-theme-surface text-theme-accent border border-theme-border shadow-subtle'
+                  : 'text-theme-text-secondary hover:text-theme-text hover:bg-theme-surface-secondary'
+              }`}
+              title="AI Chat Assistant"
+            >
+              <MessageSquare className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => onSelectView('documents')}
+              className={`p-2 rounded-xl transition-colors ${
+                activeView === 'documents'
+                  ? 'bg-theme-surface text-theme-accent border border-theme-border shadow-subtle'
+                  : 'text-theme-text-secondary hover:text-theme-text hover:bg-theme-surface-secondary'
+              }`}
+              title="Knowledge Documents"
+            >
+              <FileText className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => onSelectView('search')}
+              className={`p-2 rounded-xl transition-colors ${
+                activeView === 'search'
+                  ? 'bg-theme-surface text-theme-accent border border-theme-border shadow-subtle'
+                  : 'text-theme-text-secondary hover:text-theme-text hover:bg-theme-surface-secondary'
+              }`}
+              title="Deep Vault Search"
+            >
+              <SearchIcon className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => onSelectView('graph')}
+              className={`p-2 rounded-xl transition-colors ${
+                activeView === 'graph'
+                  ? 'bg-theme-surface text-theme-accent border border-theme-border shadow-subtle'
+                  : 'text-theme-text-secondary hover:text-theme-text hover:bg-theme-surface-secondary'
+              }`}
+              title="Knowledge Graph"
+            >
+              <Network className="w-4 h-4" />
             </button>
           </div>
         )}

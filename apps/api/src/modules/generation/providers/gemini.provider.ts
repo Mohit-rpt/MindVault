@@ -152,6 +152,10 @@ export class GeminiProvider implements LLMProvider {
       throw new Error('GEMINI_API_KEY is missing. Please add GEMINI_API_KEY to your .env file.');
     }
 
+    if (options?.signal?.aborted) {
+      return;
+    }
+
     const contents = this.buildContents(prompt, options);
     const candidates = this.getCandidateModels();
 
@@ -159,6 +163,10 @@ export class GeminiProvider implements LLMProvider {
     let selectedModel = this.modelName;
 
     for (const model of candidates) {
+      if (options?.signal?.aborted) {
+        return;
+      }
+
       try {
         stream = await this.client.models.generateContentStream({
           model,
@@ -173,6 +181,9 @@ export class GeminiProvider implements LLMProvider {
         selectedModel = model;
         break;
       } catch (err: any) {
+        if (options?.signal?.aborted) {
+          return;
+        }
         const msg = String(err.message || err);
         if (
           msg.includes('404') ||
@@ -189,12 +200,19 @@ export class GeminiProvider implements LLMProvider {
       }
     }
 
+    if (options?.signal?.aborted) {
+      return;
+    }
+
     if (!stream) {
       throw new Error('All Gemini candidate models were unavailable.');
     }
 
     try {
       for await (const chunk of stream) {
+        if (options?.signal?.aborted) {
+          return;
+        }
         if (chunk.text) {
           yield {
             text: chunk.text,
@@ -209,6 +227,9 @@ export class GeminiProvider implements LLMProvider {
         finishReason: 'stop',
       };
     } catch (err: any) {
+      if (options?.signal?.aborted) {
+        return;
+      }
       throw new Error(`Gemini stream failed on ${selectedModel}: ${err.message || String(err)}`);
     }
   }

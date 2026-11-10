@@ -53,7 +53,10 @@ export class GraphExtractionWorker {
   private redisClient: Redis | null = null;
 
   // Track active jobs and their abort controllers for graceful cooperative shutdown
-  private activeJobs = new Map<string, { abortController: AbortController; timeoutId?: NodeJS.Timeout }>();
+  private activeJobs = new Map<
+    string,
+    { abortController: AbortController; timeoutId?: NodeJS.Timeout }
+  >();
 
   constructor(private readonly service: GraphExtractionService = graphExtractionService) {}
 
@@ -104,7 +107,9 @@ export class GraphExtractionWorker {
 
       this.logger.info(`GraphExtractionWorker listening on queue "${GRAPH_EXTRACTION_QUEUE_NAME}"`);
     } catch (err: any) {
-      this.logger.warn(`Could not connect GraphExtractionWorker to Redis: ${err.message}. Running in standby.`);
+      this.logger.warn(
+        `Could not connect GraphExtractionWorker to Redis: ${err.message}. Running in standby.`,
+      );
     }
   }
 
@@ -131,7 +136,9 @@ export class GraphExtractionWorker {
       for (const [jobId, entry] of this.activeJobs.entries()) {
         this.logger.info(`Arming 8-second chunk completion budget for active job ${jobId}`);
         entry.timeoutId = setTimeout(() => {
-          this.logger.warn(`Chunk budget expired (8s) for job ${jobId}; aborting in-flight LLM call`);
+          this.logger.warn(
+            `Chunk budget expired (8s) for job ${jobId}; aborting in-flight LLM call`,
+          );
           entry.abortController.abort();
         }, 8000);
       }
@@ -191,13 +198,16 @@ export class GraphExtractionWorker {
     });
 
     if (!docWithChunks) {
-      this.logger.warn(`Document ${documentId} not found in workspace ${workspaceId}. Skipping job.`);
+      this.logger.warn(
+        `Document ${documentId} not found in workspace ${workspaceId}. Skipping job.`,
+      );
       return;
     }
 
     const document = docWithChunks;
     const preflightMetadata = (document.metadata || {}) as Record<string, any>;
-    const jobExtractionRunId = job.data.extractionRunId || preflightMetadata.extractionRunId || crypto.randomUUID();
+    const jobExtractionRunId =
+      job.data.extractionRunId || preflightMetadata.extractionRunId || crypto.randomUUID();
 
     // Step 1: Worker Entry Protection with Two-Statement Protocol under READ COMMITTED
     const entryResult = await prisma.$transaction(
@@ -210,16 +220,18 @@ export class GraphExtractionWorker {
         `;
 
         // Statement 2: Fresh snapshot evaluation strictly after row lock acquisition
-        const snapRows = await tx.$queryRaw<Array<{
-          id: string;
-          metadata: any;
-          checksum: string | null;
-          originalName: string;
-          isLeaseActive: boolean;
-          activeRunId: string | null;
-          activeToken: string | null;
-          activeGen: any;
-        }>>`
+        const snapRows = await tx.$queryRaw<
+          Array<{
+            id: string;
+            metadata: any;
+            checksum: string | null;
+            originalName: string;
+            isLeaseActive: boolean;
+            activeRunId: string | null;
+            activeToken: string | null;
+            activeGen: any;
+          }>
+        >`
           SELECT
             id,
             metadata,
@@ -233,17 +245,22 @@ export class GraphExtractionWorker {
           WHERE id = ${documentId} AND "workspaceId" = ${workspaceId};
         `;
 
-        const snap = (snapRows && snapRows.length > 0) ? snapRows[0] : {
-          id: document.id,
-          metadata: document.metadata,
-          checksum: document.checksum,
-          originalName: document.originalName,
-          isLeaseActive: (document.metadata as any)?.graphWorkerToken != null &&
-            new Date((document.metadata as any)?.graphLeaseExpiresAt || 0).getTime() > Date.now(),
-          activeRunId: (document.metadata as any)?.extractionRunId || jobExtractionRunId,
-          activeToken: (document.metadata as any)?.graphWorkerToken || null,
-          activeGen: (document.metadata as any)?.graphLeaseGeneration ?? 0,
-        };
+        const snap =
+          snapRows && snapRows.length > 0
+            ? snapRows[0]
+            : {
+                id: document.id,
+                metadata: document.metadata,
+                checksum: document.checksum,
+                originalName: document.originalName,
+                isLeaseActive:
+                  (document.metadata as any)?.graphWorkerToken != null &&
+                  new Date((document.metadata as any)?.graphLeaseExpiresAt || 0).getTime() >
+                    Date.now(),
+                activeRunId: (document.metadata as any)?.extractionRunId || jobExtractionRunId,
+                activeToken: (document.metadata as any)?.graphWorkerToken || null,
+                activeGen: (document.metadata as any)?.graphLeaseGeneration ?? 0,
+              };
 
         const metadata = (snap.metadata || {}) as Record<string, any>;
         const activeRunId = snap.activeRunId || jobExtractionRunId;
@@ -252,7 +269,11 @@ export class GraphExtractionWorker {
         // Fast-Exit Check: Terminal GraphFinalizationReceipt existence
         const existingReceipt = metadata.graphFinalizationReceipt;
         if (existingReceipt) {
-          const isValidReceipt = validateFinalizationReceipt(existingReceipt, activeRunId, manifestHash);
+          const isValidReceipt = validateFinalizationReceipt(
+            existingReceipt,
+            activeRunId,
+            manifestHash,
+          );
           if (isValidReceipt) {
             return {
               status: 'RECEIPT_EXISTS' as const,
@@ -363,7 +384,9 @@ export class GraphExtractionWorker {
         '60',
       );
       if (leaseAcquired !== 1) {
-        this.logger.warn(`Could not acquire Redis lease for document ${documentId}; deferring via BullMQ`);
+        this.logger.warn(
+          `Could not acquire Redis lease for document ${documentId}; deferring via BullMQ`,
+        );
         await prisma.$executeRaw`
           UPDATE "documents"
           SET metadata = jsonb_set(
@@ -400,7 +423,9 @@ export class GraphExtractionWorker {
       leaseTtlSeconds: 60,
       onFenced: () => {
         isFenced = true;
-        this.logger.warn(`Worker fenced for document ${documentId}; aborting active chunk extraction`);
+        this.logger.warn(
+          `Worker fenced for document ${documentId}; aborting active chunk extraction`,
+        );
         chunkAbortController.abort();
       },
     });
@@ -412,7 +437,10 @@ export class GraphExtractionWorker {
 
     try {
       // 5. Inspect existing checkpoint for exact resumption and source content manifest validity
-      const currentManifestHash = computeChunkManifestHash(document.checksum || document.id, document.chunks);
+      const currentManifestHash = computeChunkManifestHash(
+        document.checksum || document.id,
+        document.chunks,
+      );
       const checkpoint = metadata.graphCheckpoint as GraphChunkCheckpoint | undefined;
       let startIndex = 0;
       let activeCheckpoint = checkpoint;
@@ -425,7 +453,9 @@ export class GraphExtractionWorker {
 
         if (isManifestMatch) {
           startIndex = checkpoint.lastCompletedChunkIndex + 1;
-          this.logger.info(`Resuming extraction for document ${documentId} from chunk index ${startIndex}`);
+          this.logger.info(
+            `Resuming extraction for document ${documentId} from chunk index ${startIndex}`,
+          );
         } else {
           this.logger.warn(
             `Invalidating stale checkpoint for document ${documentId}: chunkManifestHash mismatch (expected ${currentManifestHash}, found ${checkpoint.chunkManifestHash}). Restarting from Chunk 0.`,
@@ -445,7 +475,9 @@ export class GraphExtractionWorker {
       for (let i = startIndex; i < totalChunks; i++) {
         // Evaluate cooperative shutdown or fencing before starting chunk
         if (this.isShuttingDown || isFenced) {
-          this.logger.info(`Halting chunk iteration for document ${documentId} at index ${i} (shuttingDown=${this.isShuttingDown}, fenced=${isFenced})`);
+          this.logger.info(
+            `Halting chunk iteration for document ${documentId} at index ${i} (shuttingDown=${this.isShuttingDown}, fenced=${isFenced})`,
+          );
           break;
         }
 
@@ -520,7 +552,9 @@ export class GraphExtractionWorker {
 
           if (errorType === 'FENCED') {
             isFenced = true;
-            this.logger.warn(`Worker fenced during chunk ${i} persistence: ${err.message}. Ceasing writes.`);
+            this.logger.warn(
+              `Worker fenced during chunk ${i} persistence: ${err.message}. Ceasing writes.`,
+            );
             break;
           }
 
@@ -594,7 +628,8 @@ export class GraphExtractionWorker {
       }
 
       // 7. Evaluate Completion vs Deferral
-      const allChunksEvaluated = (lastCompletedIndex === totalChunks - 1 && totalChunks > 0) || totalChunks === 0;
+      const allChunksEvaluated =
+        (lastCompletedIndex === totalChunks - 1 && totalChunks > 0) || totalChunks === 0;
 
       if (this.isShuttingDown && !allChunksEvaluated && !isFenced) {
         // --- GRACEFUL DEFERRAL PROTOCOL ---
@@ -623,7 +658,9 @@ export class GraphExtractionWorker {
 
         if (deferResult === 0) {
           // Worker was superseded by recovery sweep or expired before deferral!
-          this.logger.warn(`Deferral CAS returned 0 rows for document ${documentId}; worker was superseded. Ceasing writes without re-enqueuing.`);
+          this.logger.warn(
+            `Deferral CAS returned 0 rows for document ${documentId}; worker was superseded. Ceasing writes without re-enqueuing.`,
+          );
           await heartbeatManager.terminate();
           return;
         }
@@ -642,9 +679,16 @@ export class GraphExtractionWorker {
           if (err instanceof WaitingError || err.name === 'WaitingError') {
             throw err;
           }
-          this.logger.error(`Redis failure during moveToWait for job ${job.id}: ${err.message}. Recording pendingDispatch intent for recovery.`);
+          this.logger.error(
+            `Redis failure during moveToWait for job ${job.id}: ${err.message}. Recording pendingDispatch intent for recovery.`,
+          );
           // Write pendingDispatch with enqueuedAt=null to guarantee <=90s recovery
-          await this.recordPendingDispatchForRecovery(documentId, extractionRunId, job.id || '', err.message);
+          await this.recordPendingDispatchForRecovery(
+            documentId,
+            extractionRunId,
+            job.id || '',
+            err.message,
+          );
           throw err;
         }
 
@@ -687,7 +731,7 @@ export class GraphExtractionWorker {
                   AND (metadata->>'graphLeaseExpiresAt')::timestamptz > clock_timestamp();
               `
             : terminalStatus === 'FAILED'
-            ? await prisma.$executeRaw`
+              ? await prisma.$executeRaw`
                 UPDATE "documents"
                 SET metadata = jsonb_set(
                   jsonb_set(
@@ -708,7 +752,7 @@ export class GraphExtractionWorker {
                   AND metadata->>'graphStatus' = 'PROCESSING'
                   AND (metadata->>'graphLeaseExpiresAt')::timestamptz > clock_timestamp();
               `
-            : await prisma.$executeRaw`
+              : await prisma.$executeRaw`
                 UPDATE "documents"
                 SET metadata = jsonb_set(
                   jsonb_set(

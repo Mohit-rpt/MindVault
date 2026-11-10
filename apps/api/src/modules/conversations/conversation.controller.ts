@@ -325,31 +325,40 @@ export class ConversationController {
       const abortController = new AbortController();
       let clientDisconnected = false;
 
-      req.on('close', () => {
+      const onClose = () => {
         clientDisconnected = true;
         abortController.abort();
-      });
+      };
 
-      const eventStream = ConversationRAGService.streamConversationMessage(
-        sessionId,
-        workspaceId,
-        userId,
-        parseResult.data,
-        abortController.signal,
-      );
+      req.on('close', onClose);
+      res.on('close', onClose);
 
-      for await (const event of eventStream) {
-        if (clientDisconnected) break;
+      try {
+        const eventStream = ConversationRAGService.streamConversationMessage(
+          sessionId,
+          workspaceId,
+          userId,
+          parseResult.data,
+          abortController.signal,
+        );
 
-        const payload = JSON.stringify(event);
-        res.write(`event: ${event.type}\ndata: ${payload}\n\n`);
+        for await (const event of eventStream) {
+          if (clientDisconnected || abortController.signal.aborted) break;
 
-        if (event.type === 'done' || event.type === 'error') {
-          break;
+          const payload = JSON.stringify(event);
+          res.write(`event: ${event.type}\ndata: ${payload}\n\n`);
+
+          if (event.type === 'done' || event.type === 'error') {
+            break;
+          }
+        }
+      } finally {
+        req.off('close', onClose);
+        res.off('close', onClose);
+        if (!clientDisconnected && !res.writableEnded) {
+          res.end();
         }
       }
-
-      res.end();
     } catch (err) {
       next(err);
     }

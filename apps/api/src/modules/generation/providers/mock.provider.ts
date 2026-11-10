@@ -41,6 +41,10 @@ export class MockLLMProvider implements LLMProvider {
     this.defaultResponse = response;
   }
 
+  public setStreamDelay(delayMs: number): void {
+    this.streamDelayMs = delayMs;
+  }
+
   public setSimulatedFailure(shouldFail: boolean, message?: string): void {
     this.shouldFail = shouldFail;
     if (message) this.failureMessage = message;
@@ -152,10 +156,14 @@ export class MockLLMProvider implements LLMProvider {
 
   public async *generateStream(
     prompt: string,
-    _options?: LLMGenerateOptions,
+    options?: LLMGenerateOptions,
   ): AsyncIterable<LLMStreamChunk> {
     if (this.shouldFail) {
       throw new Error(this.failureMessage);
+    }
+
+    if (options?.signal?.aborted) {
+      return;
     }
 
     const text = this.generateDeterministicResponse(prompt);
@@ -163,8 +171,38 @@ export class MockLLMProvider implements LLMProvider {
     const tokens = text.match(/\S+|\s+/g) || [text];
 
     for (let i = 0; i < tokens.length; i++) {
+      if (options?.signal?.aborted) {
+        return;
+      }
+
       if (this.streamDelayMs > 0) {
-        await new Promise((resolve) => setTimeout(resolve, this.streamDelayMs));
+        await new Promise<void>((resolve, reject) => {
+          if (options?.signal?.aborted) {
+            return reject(new Error('CLIENT_ABORTED'));
+          }
+
+          const onAbort = () => {
+            clearTimeout(timer);
+            options?.signal?.removeEventListener('abort', onAbort);
+            reject(new Error('CLIENT_ABORTED'));
+          };
+
+          const timer = setTimeout(() => {
+            options?.signal?.removeEventListener('abort', onAbort);
+            resolve();
+          }, this.streamDelayMs);
+
+          options?.signal?.addEventListener('abort', onAbort, { once: true });
+        }).catch((err) => {
+          if (options?.signal?.aborted || err.message === 'CLIENT_ABORTED') {
+            return;
+          }
+          throw err;
+        });
+
+        if (options?.signal?.aborted) {
+          return;
+        }
       }
 
       const isLast = i === tokens.length - 1;

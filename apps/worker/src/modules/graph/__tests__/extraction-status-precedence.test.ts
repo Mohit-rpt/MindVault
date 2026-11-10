@@ -156,7 +156,11 @@ const { mockPrisma, dbState } = vi.hoisted(() => {
         return override;
       }
 
-      const sql = (strings?.raw ? strings.raw.join(' ') : Array.isArray(strings) ? strings.join(' ') : String(strings));
+      const sql = strings?.raw
+        ? strings.raw.join(' ')
+        : Array.isArray(strings)
+          ? strings.join(' ')
+          : String(strings);
 
       let doc: any = null;
       for (const val of values) {
@@ -170,7 +174,8 @@ const { mockPrisma, dbState } = vi.hoisted(() => {
       if (sql.includes("'{graphCheckpoint}'")) {
         if (doc) {
           try {
-            doc.metadata.graphCheckpoint = typeof values[0] === 'string' ? JSON.parse(values[0]) : values[0];
+            doc.metadata.graphCheckpoint =
+              typeof values[0] === 'string' ? JSON.parse(values[0]) : values[0];
           } catch {
             doc.metadata.graphCheckpoint = values[0];
           }
@@ -183,7 +188,8 @@ const { mockPrisma, dbState } = vi.hoisted(() => {
       if (sql.includes("'{pendingDispatch}'")) {
         if (doc) {
           try {
-            doc.metadata.pendingDispatch = typeof values[0] === 'string' ? JSON.parse(values[0]) : values[0];
+            doc.metadata.pendingDispatch =
+              typeof values[0] === 'string' ? JSON.parse(values[0]) : values[0];
           } catch {
             doc.metadata.pendingDispatch = values[0];
           }
@@ -203,7 +209,8 @@ const { mockPrisma, dbState } = vi.hoisted(() => {
           return 0;
         }
         try {
-          doc.metadata.graphFinalizationReceipt = typeof values[0] === 'string' ? JSON.parse(values[0]) : values[0];
+          doc.metadata.graphFinalizationReceipt =
+            typeof values[0] === 'string' ? JSON.parse(values[0]) : values[0];
         } catch {
           doc.metadata.graphFinalizationReceipt = values[0];
         }
@@ -220,7 +227,11 @@ const { mockPrisma, dbState } = vi.hoisted(() => {
       }
 
       // Deferral update
-      if (sql.includes("'{graphStatus}'") && sql.includes('"QUEUED"') && sql.includes("'{graphWorkerToken}'")) {
+      if (
+        sql.includes("'{graphStatus}'") &&
+        sql.includes('"QUEUED"') &&
+        sql.includes("'{graphWorkerToken}'")
+      ) {
         if (!doc) return 1;
         const targetRunId = values[1];
         const targetWorkerToken = values[2];
@@ -236,7 +247,11 @@ const { mockPrisma, dbState } = vi.hoisted(() => {
       }
 
       // Claim update
-      if (sql.includes("'{graphStatus}'") && sql.includes('"PROCESSING"') && sql.includes("'{graphWorkerToken}'")) {
+      if (
+        sql.includes("'{graphStatus}'") &&
+        sql.includes('"PROCESSING"') &&
+        sql.includes("'{graphWorkerToken}'")
+      ) {
         if (!doc) return 1;
         const targetWorkerToken = values[0];
         const targetRunId = values[2];
@@ -276,7 +291,11 @@ const { mockPrisma, dbState } = vi.hoisted(() => {
         return override;
       }
 
-      const sql = (strings?.raw ? strings.raw.join(' ') : Array.isArray(strings) ? strings.join(' ') : String(strings));
+      const sql = strings?.raw
+        ? strings.raw.join(' ')
+        : Array.isArray(strings)
+          ? strings.join(' ')
+          : String(strings);
 
       // Finalization receipt check in worker claim
       if (sql.includes('graphFinalizationReceipt')) {
@@ -314,7 +333,10 @@ import { GraphExtractionWorker } from '../worker/graph-extraction.worker.js';
 import { GraphExtractionService } from '../services/graph-extraction.service.js';
 import { MockExtractionProvider } from '../providers/mock-extraction.provider.js';
 import { graphRepository } from '../repositories/graph.repository.js';
-import { ExtractionTransientError, ExtractionPermanentError } from '../errors/extraction-error.classifier.js';
+import {
+  ExtractionTransientError,
+  ExtractionPermanentError,
+} from '../errors/extraction-error.classifier.js';
 import { ExtractionFencedError } from '../errors/extraction-fenced.error.js';
 import {
   type GraphFinalizationReceipt,
@@ -677,7 +699,9 @@ describe('MindVault Task 6.4.4 — Error Classification, Deterministic Retries &
     };
 
     it('accepts valid COMPLETED, PARTIAL, and FAILED receipts', () => {
-      expect(validateFinalizationReceipt(validReceipt, 'run_valid_123', 'manifest_hash_abc', 5)).toBe(true);
+      expect(
+        validateFinalizationReceipt(validReceipt, 'run_valid_123', 'manifest_hash_abc', 5),
+      ).toBe(true);
 
       const partialReceipt: GraphFinalizationReceipt = {
         ...validReceipt,
@@ -685,7 +709,9 @@ describe('MindVault Task 6.4.4 — Error Classification, Deterministic Retries &
         succeededChunksCount: 3,
         failedChunksCount: 2,
       };
-      expect(validateFinalizationReceipt(partialReceipt, 'run_valid_123', 'manifest_hash_abc', 5)).toBe(true);
+      expect(
+        validateFinalizationReceipt(partialReceipt, 'run_valid_123', 'manifest_hash_abc', 5),
+      ).toBe(true);
 
       const failedReceipt: GraphFinalizationReceipt = {
         ...validReceipt,
@@ -693,17 +719,23 @@ describe('MindVault Task 6.4.4 — Error Classification, Deterministic Retries &
         succeededChunksCount: 0,
         failedChunksCount: 5,
       };
-      expect(validateFinalizationReceipt(failedReceipt, 'run_valid_123', 'manifest_hash_abc', 5)).toBe(true);
+      expect(
+        validateFinalizationReceipt(failedReceipt, 'run_valid_123', 'manifest_hash_abc', 5),
+      ).toBe(true);
     });
 
     it('rejects negative chunk counters', () => {
       const invalid = { ...validReceipt, succeededChunksCount: -1 };
-      expect(validateFinalizationReceipt(invalid, 'run_valid_123', 'manifest_hash_abc', 5)).toBe(false);
+      expect(validateFinalizationReceipt(invalid, 'run_valid_123', 'manifest_hash_abc', 5)).toBe(
+        false,
+      );
     });
 
     it('rejects non-integer chunk counters', () => {
       const invalid = { ...validReceipt, succeededChunksCount: 2.5 };
-      expect(validateFinalizationReceipt(invalid, 'run_valid_123', 'manifest_hash_abc', 5)).toBe(false);
+      expect(validateFinalizationReceipt(invalid, 'run_valid_123', 'manifest_hash_abc', 5)).toBe(
+        false,
+      );
     });
 
     it('rejects imbalanced counters where processed !== succeeded + failed', () => {
@@ -713,7 +745,9 @@ describe('MindVault Task 6.4.4 — Error Classification, Deterministic Retries &
         succeededChunksCount: 4,
         failedChunksCount: 0, // 4 + 0 !== 5
       };
-      expect(validateFinalizationReceipt(invalid, 'run_valid_123', 'manifest_hash_abc', 5)).toBe(false);
+      expect(validateFinalizationReceipt(invalid, 'run_valid_123', 'manifest_hash_abc', 5)).toBe(
+        false,
+      );
     });
 
     it('rejects imbalanced counters where processed !== chunkCount', () => {
@@ -724,7 +758,9 @@ describe('MindVault Task 6.4.4 — Error Classification, Deterministic Retries &
         failedChunksCount: 0,
         chunkCount: 5,
       };
-      expect(validateFinalizationReceipt(invalid, 'run_valid_123', 'manifest_hash_abc', 5)).toBe(false);
+      expect(validateFinalizationReceipt(invalid, 'run_valid_123', 'manifest_hash_abc', 5)).toBe(
+        false,
+      );
     });
 
     it('rejects COMPLETED status when failedChunksCount > 0', () => {
@@ -734,7 +770,9 @@ describe('MindVault Task 6.4.4 — Error Classification, Deterministic Retries &
         succeededChunksCount: 4,
         failedChunksCount: 1,
       };
-      expect(validateFinalizationReceipt(invalid, 'run_valid_123', 'manifest_hash_abc', 5)).toBe(false);
+      expect(validateFinalizationReceipt(invalid, 'run_valid_123', 'manifest_hash_abc', 5)).toBe(
+        false,
+      );
     });
 
     it('rejects PARTIAL status when failedChunksCount is 0 or succeededChunksCount is 0', () => {
@@ -744,7 +782,9 @@ describe('MindVault Task 6.4.4 — Error Classification, Deterministic Retries &
         succeededChunksCount: 5,
         failedChunksCount: 0,
       };
-      expect(validateFinalizationReceipt(allSucceeded, 'run_valid_123', 'manifest_hash_abc', 5)).toBe(false);
+      expect(
+        validateFinalizationReceipt(allSucceeded, 'run_valid_123', 'manifest_hash_abc', 5),
+      ).toBe(false);
 
       const allFailed: GraphFinalizationReceipt = {
         ...validReceipt,
@@ -752,7 +792,9 @@ describe('MindVault Task 6.4.4 — Error Classification, Deterministic Retries &
         succeededChunksCount: 0,
         failedChunksCount: 5,
       };
-      expect(validateFinalizationReceipt(allFailed, 'run_valid_123', 'manifest_hash_abc', 5)).toBe(false);
+      expect(validateFinalizationReceipt(allFailed, 'run_valid_123', 'manifest_hash_abc', 5)).toBe(
+        false,
+      );
     });
 
     it('rejects FAILED status when succeededChunksCount > 0', () => {
@@ -762,18 +804,28 @@ describe('MindVault Task 6.4.4 — Error Classification, Deterministic Retries &
         succeededChunksCount: 1,
         failedChunksCount: 4,
       };
-      expect(validateFinalizationReceipt(invalid, 'run_valid_123', 'manifest_hash_abc', 5)).toBe(false);
+      expect(validateFinalizationReceipt(invalid, 'run_valid_123', 'manifest_hash_abc', 5)).toBe(
+        false,
+      );
     });
 
     it('rejects mismatched extractionRunId, chunkManifestHash, or totalChunks', () => {
-      expect(validateFinalizationReceipt(validReceipt, 'wrong_run', 'manifest_hash_abc', 5)).toBe(false);
-      expect(validateFinalizationReceipt(validReceipt, 'run_valid_123', 'wrong_hash', 5)).toBe(false);
-      expect(validateFinalizationReceipt(validReceipt, 'run_valid_123', 'manifest_hash_abc', 6)).toBe(false);
+      expect(validateFinalizationReceipt(validReceipt, 'wrong_run', 'manifest_hash_abc', 5)).toBe(
+        false,
+      );
+      expect(validateFinalizationReceipt(validReceipt, 'run_valid_123', 'wrong_hash', 5)).toBe(
+        false,
+      );
+      expect(
+        validateFinalizationReceipt(validReceipt, 'run_valid_123', 'manifest_hash_abc', 6),
+      ).toBe(false);
     });
 
     it('rejects invalid completedAt timestamp strings', () => {
       const invalid = { ...validReceipt, completedAt: 'invalid-date-string' };
-      expect(validateFinalizationReceipt(invalid, 'run_valid_123', 'manifest_hash_abc', 5)).toBe(false);
+      expect(validateFinalizationReceipt(invalid, 'run_valid_123', 'manifest_hash_abc', 5)).toBe(
+        false,
+      );
     });
   });
 

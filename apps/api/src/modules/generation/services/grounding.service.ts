@@ -59,15 +59,8 @@ export class GroundingService {
     } else if (!citationResult.citationIdsValid) {
       status = 'CITATION_INVALID';
     } else if (citationResult.citationsPresent && citationResult.citationIdsValid) {
-      // Check if partially grounded (e.g. citations present, but fewer than supplied or partial warning)
-      if (
-        citationResult.validCitationIds.length < suppliedSources.length &&
-        suppliedSources.length > 3
-      ) {
-        status = 'PARTIALLY_GROUNDED';
-      } else {
-        status = 'GROUNDED';
-      }
+      // Citations are present and all cited citation IDs exist in suppliedSources
+      status = 'GROUNDED';
     } else {
       // Evidence was supplied but no citations were included
       status = 'PARTIALLY_GROUNDED';

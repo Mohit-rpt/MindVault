@@ -132,7 +132,7 @@ const TextBlock: React.FC<{
   const flushTable = () => {
     if (inTable && tableRows.length > 0) {
       const headerRow = tableRows[0];
-      const dataRows = tableRows.slice(1).filter((r) => !r.trim().match(/^\|?[-:\s|]+\|?$/));
+      const dataRows = tableRows.slice(1).filter((r) => !/^\|?[\s|:-]+\|?$/.test(r.trim()));
 
       const parseCells = (row: string) =>
         row

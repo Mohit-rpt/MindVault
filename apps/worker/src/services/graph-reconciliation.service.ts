@@ -72,7 +72,9 @@ export class GraphReconciliationService {
   public start(intervalMs = 60000): void {
     if (this.isRunning) return;
     this.isRunning = true;
-    this.logger.info(`Starting GraphReconciliationService periodic loop (interval: ${intervalMs}ms)`);
+    this.logger.info(
+      `Starting GraphReconciliationService periodic loop (interval: ${intervalMs}ms)`,
+    );
 
     this.timer = setInterval(() => {
       this.executeStartupReconciliation().catch((err) => {
@@ -152,7 +154,9 @@ export class GraphReconciliationService {
           );
 
           // Step 1: Scan candidate documents in QUEUED, PROCESSING, or with pendingDispatch
-          const candidates = await tx.$queryRaw<Array<{ id: string; workspaceId: string; metadata: any }>>`
+          const candidates = await tx.$queryRaw<
+            Array<{ id: string; workspaceId: string; metadata: any }>
+          >`
             SELECT id, "workspaceId", metadata
             FROM "documents"
             WHERE (
@@ -200,7 +204,9 @@ export class GraphReconciliationService {
     result: GraphReconciliationSweepResult,
   ): Promise<void> {
     // Step 1: Read Authoritative PostgreSQL State under FOR NO KEY UPDATE
-    const lockedRows = await tx.$queryRaw<Array<{ id: string; workspaceId: string; metadata: any }>>`
+    const lockedRows = await tx.$queryRaw<
+      Array<{ id: string; workspaceId: string; metadata: any }>
+    >`
       SELECT id, "workspaceId", metadata
       FROM "documents"
       WHERE id = ${candidate.id} AND "workspaceId" = ${candidate.workspaceId}
@@ -210,9 +216,8 @@ export class GraphReconciliationService {
     if (lockedRows.length === 0) return;
     const doc = lockedRows[0];
     const metadata = (doc.metadata || {}) as Record<string, any>;
-    const extractionRunId = (metadata.extractionRunId || metadata.pendingDispatch?.extractionRunId) as
-      | string
-      | undefined;
+    const extractionRunId = (metadata.extractionRunId ||
+      metadata.pendingDispatch?.extractionRunId) as string | undefined;
 
     // Step 2: Does active extractionRunId exist?
     if (!extractionRunId) {
@@ -321,7 +326,8 @@ export class GraphReconciliationService {
         );
 
         // Evict redundant Redis job if present
-        const jobId = metadata.pendingDispatch?.jobId || formatExtractionJobId(doc.id, extractionRunId);
+        const jobId =
+          metadata.pendingDispatch?.jobId || formatExtractionJobId(doc.id, extractionRunId);
         if (this.queue.getJob) {
           try {
             const job = await this.queue.getJob(jobId);
@@ -379,7 +385,9 @@ export class GraphReconciliationService {
 
     // State 1: Missing Job in Redis
     if (!job) {
-      this.logger.warn(`Job ${jobId} missing from Redis for document ${doc.id}; reconciling queue presence`);
+      this.logger.warn(
+        `Job ${jobId} missing from Redis for document ${doc.id}; reconciling queue presence`,
+      );
 
       // If pendingDispatch exists but enqueuedAt is null, confirm and enqueue
       if (metadata.pendingDispatch && metadata.pendingDispatch.enqueuedAt === null) {
@@ -477,7 +485,9 @@ export class GraphReconciliationService {
           this.logger.info(`Job ${jobId} is healthy in BullMQ waiting set; skipping`);
           return;
         }
-        this.logger.warn(`Job ${jobId} in waiting set is stale (runId mismatch); removing and re-enqueueing`);
+        this.logger.warn(
+          `Job ${jobId} in waiting set is stale (runId mismatch); removing and re-enqueueing`,
+        );
         await job.remove().catch(() => {});
         await this.queue.enqueue({
           documentId: doc.id,
@@ -496,14 +506,18 @@ export class GraphReconciliationService {
 
       // State 4: Active in BullMQ
       case 'active': {
-        const heartbeatAt = metadata.graphHeartbeatAt ? new Date(metadata.graphHeartbeatAt).getTime() : 0;
+        const heartbeatAt = metadata.graphHeartbeatAt
+          ? new Date(metadata.graphHeartbeatAt).getTime()
+          : 0;
         const isHeartbeatFresh = Date.now() - heartbeatAt < STALE_HEARTBEAT_THRESHOLD_MS;
         if (isHeartbeatFresh) {
           this.logger.info(`Job ${jobId} has active worker with fresh heartbeat (< 5m); skipping`);
           return;
         }
 
-        this.logger.warn(`Job ${jobId} is active but heartbeat is stale (> 5m); treating as crashed worker`);
+        this.logger.warn(
+          `Job ${jobId} is active but heartbeat is stale (> 5m); treating as crashed worker`,
+        );
         await this.handleExhaustedOrStalledJob(tx, doc, job, currentAttempts, result);
         return;
       }

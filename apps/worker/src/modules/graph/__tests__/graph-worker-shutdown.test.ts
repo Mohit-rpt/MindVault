@@ -142,7 +142,11 @@ const { mockPrisma, dbState } = vi.hoisted(() => {
         return override;
       }
 
-      const sql = (strings?.raw ? strings.raw.join(' ') : Array.isArray(strings) ? strings.join(' ') : String(strings));
+      const sql = strings?.raw
+        ? strings.raw.join(' ')
+        : Array.isArray(strings)
+          ? strings.join(' ')
+          : String(strings);
 
       let doc: any = null;
       for (const val of values) {
@@ -156,7 +160,8 @@ const { mockPrisma, dbState } = vi.hoisted(() => {
       if (sql.includes("'{graphCheckpoint}'")) {
         if (doc) {
           try {
-            doc.metadata.graphCheckpoint = typeof values[0] === 'string' ? JSON.parse(values[0]) : values[0];
+            doc.metadata.graphCheckpoint =
+              typeof values[0] === 'string' ? JSON.parse(values[0]) : values[0];
           } catch {
             doc.metadata.graphCheckpoint = values[0];
           }
@@ -169,7 +174,8 @@ const { mockPrisma, dbState } = vi.hoisted(() => {
       if (sql.includes("'{pendingDispatch}'")) {
         if (doc) {
           try {
-            doc.metadata.pendingDispatch = typeof values[0] === 'string' ? JSON.parse(values[0]) : values[0];
+            doc.metadata.pendingDispatch =
+              typeof values[0] === 'string' ? JSON.parse(values[0]) : values[0];
           } catch {
             doc.metadata.pendingDispatch = values[0];
           }
@@ -189,7 +195,8 @@ const { mockPrisma, dbState } = vi.hoisted(() => {
           return 0;
         }
         try {
-          doc.metadata.graphFinalizationReceipt = typeof values[0] === 'string' ? JSON.parse(values[0]) : values[0];
+          doc.metadata.graphFinalizationReceipt =
+            typeof values[0] === 'string' ? JSON.parse(values[0]) : values[0];
         } catch {
           doc.metadata.graphFinalizationReceipt = values[0];
         }
@@ -199,7 +206,11 @@ const { mockPrisma, dbState } = vi.hoisted(() => {
       }
 
       // Deferral update
-      if (sql.includes("'{graphStatus}'") && sql.includes('"QUEUED"') && sql.includes("'{graphWorkerToken}'")) {
+      if (
+        sql.includes("'{graphStatus}'") &&
+        sql.includes('"QUEUED"') &&
+        sql.includes("'{graphWorkerToken}'")
+      ) {
         if (!doc) return 1;
         const targetRunId = values[1];
         const targetWorkerToken = values[2];
@@ -215,7 +226,11 @@ const { mockPrisma, dbState } = vi.hoisted(() => {
       }
 
       // Claim update
-      if (sql.includes("'{graphStatus}'") && sql.includes('"PROCESSING"') && sql.includes("'{graphWorkerToken}'")) {
+      if (
+        sql.includes("'{graphStatus}'") &&
+        sql.includes('"PROCESSING"') &&
+        sql.includes("'{graphWorkerToken}'")
+      ) {
         if (!doc) return 1;
         const targetWorkerToken = values[0];
         const targetRunId = values[2];
@@ -254,7 +269,11 @@ const { mockPrisma, dbState } = vi.hoisted(() => {
         return override;
       }
 
-      const sql = (strings?.raw ? strings.raw.join(' ') : Array.isArray(strings) ? strings.join(' ') : String(strings));
+      const sql = strings?.raw
+        ? strings.raw.join(' ')
+        : Array.isArray(strings)
+          ? strings.join(' ')
+          : String(strings);
 
       // Leader election
       if (sql.includes('pg_try_advisory_xact_lock')) {
@@ -291,7 +310,11 @@ const { mockPrisma, dbState } = vi.hoisted(() => {
       }
 
       // Candidate query 1: pendingDispatch with enqueuedAt IS NULL
-      if (sql.includes('pendingDispatch') && sql.includes('enqueuedAt') && sql.includes('IS NULL')) {
+      if (
+        sql.includes('pendingDispatch') &&
+        sql.includes('enqueuedAt') &&
+        sql.includes('IS NULL')
+      ) {
         const list: any[] = [];
         for (const doc of dbState.documents.values()) {
           if (doc.metadata?.pendingDispatch && doc.metadata.pendingDispatch.enqueuedAt === null) {
@@ -302,7 +325,11 @@ const { mockPrisma, dbState } = vi.hoisted(() => {
       }
 
       // Candidate query 2: presence candidates (enqueuedAt IS NOT NULL and QUEUED)
-      if (sql.includes('pendingDispatch') && sql.includes('enqueuedAt') && sql.includes('IS NOT NULL')) {
+      if (
+        sql.includes('pendingDispatch') &&
+        sql.includes('enqueuedAt') &&
+        sql.includes('IS NOT NULL')
+      ) {
         const list: any[] = [];
         for (const doc of dbState.documents.values()) {
           if (
@@ -941,7 +968,13 @@ describe('MindVault Task 6.4.2 — Final Shutdown & Lease Race Adversarial Suite
     vi.spyOn(recoveryService as any, 'internalExecuteSweep').mockImplementation(async () => {
       await new Promise((r) => setTimeout(r, 40));
       sweepResolved = true;
-      return { locked: true, drainedCount: 0, confirmedCount: 0, presenceReconciledCount: 0, errors: [] };
+      return {
+        locked: true,
+        drainedCount: 0,
+        confirmedCount: 0,
+        presenceReconciledCount: 0,
+        errors: [],
+      };
     });
 
     (recoveryService as any).isRunning = true;

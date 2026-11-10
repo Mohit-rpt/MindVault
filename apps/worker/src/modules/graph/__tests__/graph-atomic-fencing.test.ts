@@ -16,18 +16,13 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ExtractionFencedError } from '../errors/extraction-fenced.error.js';
-import {
-  computeRelationLockKey,
-  sortRelationsByLockKey,
-} from '../utils/advisory-lock.util.js';
+import { computeRelationLockKey, sortRelationsByLockKey } from '../utils/advisory-lock.util.js';
 import {
   computeChunkManifestHash,
   type KnowledgeExtractionResponse,
   type GraphChunkCheckpoint,
 } from '@mindvault/shared';
-import {
-  GraphExtractionService,
-} from '../services/graph-extraction.service.js';
+import { GraphExtractionService } from '../services/graph-extraction.service.js';
 import { GraphRepository } from '../repositories/graph.repository.js';
 
 // ---------------------------------------------------------------------------
@@ -96,7 +91,11 @@ function createMockTx(snapshotDb: MockPrismaState, rollbackRef: { shouldRollback
 
   const tx: any = {
     $queryRaw: vi.fn().mockImplementation(async (strings: any, ...values: any[]) => {
-      const sql = (strings?.raw ? strings.raw.join(' ') : Array.isArray(strings) ? strings.join(' ') : String(strings));
+      const sql = strings?.raw
+        ? strings.raw.join(' ')
+        : Array.isArray(strings)
+          ? strings.join(' ')
+          : String(strings);
       snapshotDb.statementLog.push(sql);
 
       // Tier 1 Document Row Lock: SELECT ... FOR NO KEY UPDATE
@@ -108,13 +107,15 @@ function createMockTx(snapshotDb: MockPrismaState, rollbackRef: { shouldRollback
       }
 
       // Snapshot Read: SELECT metadata, ... FROM "documents"
-      if (sql.includes('metadata->>\'extractionRunId\'') || sql.includes('dbWallClock')) {
+      if (sql.includes("metadata->>'extractionRunId'") || sql.includes('dbWallClock')) {
         const docId = values[0];
         const doc = snapshotDb.documents.get(docId);
         if (!doc) return [];
 
         const meta = doc.metadata || {};
-        const expiresAt = meta.graphLeaseExpiresAt ? new Date(meta.graphLeaseExpiresAt).getTime() : 0;
+        const expiresAt = meta.graphLeaseExpiresAt
+          ? new Date(meta.graphLeaseExpiresAt).getTime()
+          : 0;
         const now = Date.now();
         const isLeaseValid = expiresAt > now;
 
@@ -137,7 +138,11 @@ function createMockTx(snapshotDb: MockPrismaState, rollbackRef: { shouldRollback
     }),
 
     $executeRaw: vi.fn().mockImplementation(async (strings: any, ...values: any[]) => {
-      const sql = (strings?.raw ? strings.raw.join(' ') : Array.isArray(strings) ? strings.join(' ') : String(strings));
+      const sql = strings?.raw
+        ? strings.raw.join(' ')
+        : Array.isArray(strings)
+          ? strings.join(' ')
+          : String(strings);
       snapshotDb.statementLog.push(sql);
 
       // Tier 2 Advisory Lock: SELECT pg_advisory_xact_lock(...)
@@ -189,7 +194,11 @@ function createMockTx(snapshotDb: MockPrismaState, rollbackRef: { shouldRollback
     graphEntity: {
       findUnique: vi.fn().mockImplementation(async ({ where }: any) => {
         if (where?.workspaceId_id) {
-          return snapshotDb.entities.get(where.workspaceId_id.id) || stagedEntities.get(where.workspaceId_id.id) || null;
+          return (
+            snapshotDb.entities.get(where.workspaceId_id.id) ||
+            stagedEntities.get(where.workspaceId_id.id) ||
+            null
+          );
         }
         if (where?.workspaceId_normalizedName) {
           for (const e of [...snapshotDb.entities.values(), ...stagedEntities.values()]) {
@@ -226,7 +235,11 @@ function createMockTx(snapshotDb: MockPrismaState, rollbackRef: { shouldRollback
     graphRelation: {
       findUnique: vi.fn().mockImplementation(async ({ where }: any) => {
         if (where?.workspaceId_id) {
-          return snapshotDb.relations.get(where.workspaceId_id.id) || stagedRelations.get(where.workspaceId_id.id) || null;
+          return (
+            snapshotDb.relations.get(where.workspaceId_id.id) ||
+            stagedRelations.get(where.workspaceId_id.id) ||
+            null
+          );
         }
         if (where?.workspaceId_sourceEntityId_targetEntityId_relationType) {
           const w = where.workspaceId_sourceEntityId_targetEntityId_relationType;
@@ -775,7 +788,8 @@ describe('MindVault Phase 6.4.3: Database-Enforced Atomic Fencing & Checkpointin
       chunkId: 'chunk_0',
       chunkIndex: 0,
       totalChunks: 3,
-      content: 'Entity A uses Entity B in operations. Entity B depends on Entity C in operations. Entity C contains Entity D in operations.',
+      content:
+        'Entity A uses Entity B in operations. Entity B depends on Entity C in operations. Entity C contains Entity D in operations.',
       extractionRunId,
       workerToken,
       chunkManifestHash: manifestHash,
@@ -786,7 +800,9 @@ describe('MindVault Phase 6.4.3: Database-Enforced Atomic Fencing & Checkpointin
     const rowLockIdx = testDb.statementLog.findIndex((s) => s.includes('FOR NO KEY UPDATE'));
     expect(rowLockIdx).toBeGreaterThanOrEqual(0);
 
-    const firstAdvisoryLockIdx = testDb.statementLog.findIndex((s) => s.includes('pg_advisory_xact_lock'));
+    const firstAdvisoryLockIdx = testDb.statementLog.findIndex((s) =>
+      s.includes('pg_advisory_xact_lock'),
+    );
     expect(firstAdvisoryLockIdx).toBeGreaterThan(rowLockIdx);
 
     // 2. Verify Tier 2 Advisory locks were acquired in strictly ascending numerical signed 64-bit order

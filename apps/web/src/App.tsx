@@ -7,17 +7,18 @@ import { ConversationSidebar } from './components/assistant/ConversationSidebar'
 import { KnowledgeAssistant } from './components/assistant/KnowledgeAssistant';
 import { DocumentLibrary } from './components/documents/DocumentLibrary';
 import { KnowledgeSearch } from './components/search/KnowledgeSearch';
+import { KnowledgeGraphView } from './components/graph/KnowledgeGraphView';
 import { SettingsModal } from './components/settings/SettingsModal';
 import { CreateWorkspaceModal } from './components/workspace/CreateWorkspaceModal';
 import type { ChatSessionDto, ApiResponse } from '@mindvault/shared';
-import { Loader2, ArrowLeft, BookOpen, Search, Menu } from 'lucide-react';
+import { Loader2, ArrowLeft, BookOpen, Search, Menu, Network } from 'lucide-react';
 
 const MainApp: React.FC = () => {
   const { user, isLoading, activeWorkspace, accessToken } = useAuth();
   const { theme } = useTheme();
 
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-  const [activeView, setActiveView] = useState<'chat' | 'documents' | 'search'>('chat');
+  const [activeView, setActiveView] = useState<'chat' | 'documents' | 'search' | 'graph'>('chat');
 
   // Sidebar states
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
@@ -323,6 +324,48 @@ const MainApp: React.FC = () => {
 
             <div className="flex-1 p-6 max-w-5xl w-full mx-auto">
               <KnowledgeSearch />
+            </div>
+          </div>
+        )}
+
+        {/* VIEW 4: Knowledge Graph Explorer View */}
+        {activeView === 'graph' && (
+          <div className="flex-1 flex flex-col h-full overflow-hidden">
+            {/* Top Bar with Return to Chat & Breadcrumb */}
+            <header className="h-14 border-b border-theme-border px-6 flex items-center justify-between shrink-0 bg-theme-surface/50 backdrop-blur-sm sticky top-0 z-20">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsMobileSidebarOpen(true)}
+                  className="md:hidden p-1.5 rounded-lg text-theme-text-muted hover:text-theme-text hover:bg-theme-surface-secondary"
+                  aria-label="Open sidebar"
+                >
+                  <Menu className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveView('chat')}
+                  className="flex items-center gap-1.5 text-xs text-theme-text-muted hover:text-theme-text py-1 px-2 rounded-lg hover:bg-theme-surface-secondary transition-colors"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Back to Chat</span>
+                </button>
+                <div className="h-4 w-px bg-theme-border" />
+                <div className="flex items-center gap-2">
+                  <Network className="w-4 h-4 text-theme-accent" />
+                  <h1 className="text-sm font-semibold text-theme-text">
+                    Knowledge Graph Explorer
+                  </h1>
+                </div>
+              </div>
+
+              <div className="text-xs text-theme-text-muted font-mono">
+                {activeWorkspace?.name || 'Workspace'}
+              </div>
+            </header>
+
+            <div className="flex-1 overflow-hidden">
+              <KnowledgeGraphView />
             </div>
           </div>
         )}

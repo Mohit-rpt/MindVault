@@ -35,5 +35,7 @@ export function computeRelationLockKey(workspaceId: string, relationId: string):
  * Prevents AB-BA deadlocks when acquiring multiple relation advisory locks within a transaction.
  */
 export function sortRelationsByLockKey<T extends { lockKey: bigint }>(relations: T[]): T[] {
-  return [...relations].sort((a, b) => (a.lockKey < b.lockKey ? -1 : a.lockKey > b.lockKey ? 1 : 0));
+  return [...relations].sort((a, b) =>
+    a.lockKey < b.lockKey ? -1 : a.lockKey > b.lockKey ? 1 : 0,
+  );
 }
