@@ -1,0 +1,59 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
+endobj
+4 0 obj
+<< /Length 1840 >>
+stream
+BT /F1 11 Tf 50 750 Td 14 TL
+(MindVault Architecture Specification: Distributed Cloud Storage and Sharding) '
+(Document Identifier: MV-DOC-01 | Version: 2.4 | Classification: Technical Core) '
+(==========================================================================) '
+() '
+(Section 1: Multi-Zone Replication and Quorum Management) '
+(The storage subsystem implements distributed active-passive chunk replication across three) '
+(availability zones. Cross-zone consistency utilizes a quorum policy where write acknowledgments) '
+(require W=2 confirmation out of N=3 replicas. Read operations enforce R=2 consensus before returning.) '
+(Data blocks are partitioned using consistent hash rings to balance IO load.) '
+() '
+(Section 2: Chunk Hashing and Cryptographic Integrity) '
+(Every stored chunk is validated using a deterministic SHA-256 hash digest. Chunk address verification) '
+(ensures that chunk content is not tampered with at rest. When paragraphs exceed targetTokens \(700\),) '
+(recursive boundary decomposition splits on sentence punctuation with 120-token overlap, up to a) '
+(hard ceiling of maxTokens \(900\).) '
+() '
+(Section 3: Raft Consensus Leases and Heartbeats) '
+(Leader election leases are renewed via periodic heartbeats set to 1500ms intervals. If the active leader) '
+(fails to emit a heartbeat within this lease window, candidate nodes trigger an election protocol.) '
+(Data encryption at rest employs AES-256-GCM authenticated encryption for all persistent block stores.) '
+() '
+(Section 4: Subsystem Dependencies and Revocation Cascades) '
+(The Hybrid Retrieval Engine queries Vector Search Index directly. The Incident Health Daemon monitors) '
+(replication lag across all shard leaders. Revocation of tenant master keys disables document decryption,) '
+(the embedding pipeline, and context assembly.) '
+ET
+
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000002133 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+2203
+%%EOF

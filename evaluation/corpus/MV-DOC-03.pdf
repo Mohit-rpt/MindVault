@@ -1,0 +1,55 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
+endobj
+4 0 obj
+<< /Length 1496 >>
+stream
+BT /F1 11 Tf 50 750 Td 14 TL
+(MindVault Operations Runbook: Incident Management and Disaster Recovery) '
+(Document Identifier: MV-DOC-03 | Version: 4.0 | Classification: Operational Runbook) '
+(==========================================================================) '
+() '
+(Section 1: Incident Severity Definitions) '
+(Incidents are classified into four tiers: Sev-1 \(Complete cluster degradation or data unavailability\),) '
+(Sev-2 \(Major performance degradation exceeding SLA\), Sev-3 \(Non-blocking component failure\), and Sev-4 \(Inquiry\).) '
+(Tier-1 on-call manages Sev-1 triage and coordinates emergency operational response.) '
+() '
+(Section 2: Disaster Recovery Objectives and Failover Triggers) '
+(Disaster Recovery Target: Recovery Point Objective \(RPO\) < 1 minute; Recovery Time Objective \(RTO\) < 15 minutes.) '
+(Automatic primary failover engages when replica lag exceeds 5000ms. If primary database becomes unresponsive,) '
+(health probes initiate automatic promotion of the hot standby replica.) '
+() '
+(Section 3: Service Level Agreements \(SLAs\)) '
+(SLA mandates p99 retrieval latency < 150ms and initial token dispatched < 2000ms. If retrieval exceeds) '
+(the 150ms boundary, alerts trigger priority auto-scaling.) '
+() '
+(Section 4: Ingestion Pipeline Queues and Dead-Letter Policies) '
+(Queue timeout triggers 3 retries then DLQ. Status COMPLETED triggers NotificationService WebSocket and schedules) '
+(GraphExtractionTask for background entity resolution.) '
+ET
+
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000001789 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1859
+%%EOF

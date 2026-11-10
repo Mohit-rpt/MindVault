@@ -336,14 +336,16 @@ describe('Document API Integration & Security (Phase 2)', () => {
       expect(res.headers['content-disposition']).toContain('knowledge.txt');
     });
 
-    it('should block cross-workspace access to document (IDOR defense)', async () => {
-      // Outsider user attempts to access document in Workspace A
+    it('should block cross-workspace access to document with consistent 404 (IDOR & Anti-Enumeration defense)', async () => {
+      // Outsider user attempts to access document in Workspace A without workspace ID
       const res = await request(app)
         .get(`/api/documents/${documentId}`)
         .set('Authorization', `Bearer ${outsiderToken}`);
 
-      // Middleware rejects since outsider is not a member of Workspace A
-      expect([403, 404]).toContain(res.status);
+      // Consistent 404 response eliminates the document existence oracle
+      expect(res.status).toBe(404);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.code).toBe('DOCUMENT_NOT_FOUND');
     });
   });
 
@@ -391,12 +393,167 @@ describe('Document API Integration & Security (Phase 2)', () => {
       expect(found).toBeNull();
     });
 
-    it('should reject deletion attempt from outsider', async () => {
+    it('should reject deletion attempt from outsider with consistent 404', async () => {
       const res = await request(app)
         .delete(`/api/documents/${documentId}`)
         .set('Authorization', `Bearer ${outsiderToken}`);
 
-      expect([403, 404]).toContain(res.status);
+      expect(res.status).toBe(404);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.code).toBe('DOCUMENT_NOT_FOUND');
+    });
+  });
+
+  describe('Tenant Isolation, Anti-Enumeration & Context Synchronization (Milestone 2.1)', () => {
+    let docInWorkspaceA: string;
+    let docInWorkspaceB: string;
+
+    beforeEach(async () => {
+      // Create document in Workspace A (owned by ownerUser)
+      const uploadARes = await request(app)
+        .post('/api/documents/upload')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .field('workspaceId', workspaceA.id)
+        .attach('file', Buffer.from('Workspace A sensitive doc'), 'doc-a.txt');
+      docInWorkspaceA = uploadARes.body.data.id;
+
+      // Create document in Workspace B (owned by outsiderUser)
+      const uploadBRes = await request(app)
+        .post('/api/documents/upload')
+        .set('Authorization', `Bearer ${outsiderToken}`)
+        .field('workspaceId', workspaceB.id)
+        .attach('file', Buffer.from('Workspace B sensitive doc'), 'doc-b.txt');
+      docInWorkspaceB = uploadBRes.body.data.id;
+    });
+
+    it('1. legitimate access to documents in user workspace succeeds with and without header', async () => {
+      // With header
+      const resWithHeader = await request(app)
+        .get(`/api/documents/${docInWorkspaceA}`)
+        .set('Authorization', `Bearer ${memberToken}`)
+        .set('x-workspace-id', workspaceA.id);
+      expect(resWithHeader.status).toBe(200);
+      expect(resWithHeader.body.data.id).toBe(docInWorkspaceA);
+
+      // Without header (dynamically resolved and verified against user membership)
+      const resWithoutHeader = await request(app)
+        .get(`/api/documents/${docInWorkspaceA}`)
+        .set('Authorization', `Bearer ${memberToken}`);
+      expect(resWithoutHeader.status).toBe(200);
+      expect(resWithoutHeader.body.data.id).toBe(docInWorkspaceA);
+    });
+
+    it('2. outsider requesting document in another workspace returns 404 DOCUMENT_NOT_FOUND', async () => {
+      const res = await request(app)
+        .get(`/api/documents/${docInWorkspaceA}`)
+        .set('Authorization', `Bearer ${outsiderToken}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.code).toBe('DOCUMENT_NOT_FOUND');
+      expect(res.body.error.message).toBe('Document not found');
+    });
+
+    it('3. user requesting nonexistent document ID returns 404 DOCUMENT_NOT_FOUND', async () => {
+      const nonexistentId = 'nonexistent-uuid-00000000';
+      const res = await request(app)
+        .get(`/api/documents/${nonexistentId}`)
+        .set('Authorization', `Bearer ${outsiderToken}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.code).toBe('DOCUMENT_NOT_FOUND');
+      expect(res.body.error.message).toBe('Document not found');
+    });
+
+    it('4. anti-enumeration: foreign document and nonexistent document responses are completely identical', async () => {
+      const nonexistentId = '00000000-0000-0000-0000-000000000000';
+
+      const foreignRes = await request(app)
+        .get(`/api/documents/${docInWorkspaceA}`)
+        .set('Authorization', `Bearer ${outsiderToken}`);
+
+      const nonexistentRes = await request(app)
+        .get(`/api/documents/${nonexistentId}`)
+        .set('Authorization', `Bearer ${outsiderToken}`);
+
+      expect(foreignRes.status).toBe(nonexistentRes.status);
+      expect(foreignRes.status).toBe(404);
+      expect(foreignRes.body.error.code).toBe(nonexistentRes.body.error.code);
+      expect(foreignRes.body.error.message).toBe(nonexistentRes.body.error.message);
+    });
+
+    it('5. member provides own workspace header but targets document in foreign workspace -> returns 404', async () => {
+      // memberUser belongs to Workspace A, attempts to read docInWorkspaceB with x-workspace-id = workspaceA
+      const res = await request(app)
+        .get(`/api/documents/${docInWorkspaceB}`)
+        .set('Authorization', `Bearer ${memberToken}`)
+        .set('x-workspace-id', workspaceA.id);
+
+      expect(res.status).toBe(404);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.code).toBe('DOCUMENT_NOT_FOUND');
+    });
+
+    it('6. missing workspace identity on list endpoint returns 400', async () => {
+      const res = await request(app)
+        .get('/api/documents')
+        .set('Authorization', `Bearer ${memberToken}`);
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(['MISSING_WORKSPACE_ID', 'WORKSPACE_ID_REQUIRED']).toContain(res.body.error.code);
+    });
+
+    it('7. conflicting workspace identity between route param and header returns 400 CONFLICTING_WORKSPACE_ID', async () => {
+      const res = await request(app)
+        .get(`/api/workspaces/${workspaceA.id}`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .set('x-workspace-id', workspaceB.id);
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.code).toBe('CONFLICTING_WORKSPACE_ID');
+    });
+
+    it('8. context synchronization: authorized header context prevents spoofed query workspaceId from accessing foreign data', async () => {
+      // memberUser is authorized in Workspace A via X-Workspace-ID, while query asks for Workspace B
+      const res = await request(app)
+        .get(`/api/documents?workspaceId=${workspaceB.id}`)
+        .set('Authorization', `Bearer ${memberToken}`)
+        .set('x-workspace-id', workspaceA.id);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      // Only returns documents from the authorized header workspace A
+      const items = res.body.data.items as Array<{ workspaceId: string }>;
+      for (const item of items) {
+        expect(item.workspaceId).toBe(workspaceA.id);
+        expect(item.workspaceId).not.toBe(workspaceB.id);
+      }
+    });
+
+    it('10. status, download, and delete endpoints return 404 for foreign documents', async () => {
+      // Status
+      const statusRes = await request(app)
+        .get(`/api/documents/${docInWorkspaceA}/status`)
+        .set('Authorization', `Bearer ${outsiderToken}`);
+      expect(statusRes.status).toBe(404);
+      expect(statusRes.body.error.code).toBe('DOCUMENT_NOT_FOUND');
+
+      // Download
+      const downloadRes = await request(app)
+        .get(`/api/documents/${docInWorkspaceA}/download`)
+        .set('Authorization', `Bearer ${outsiderToken}`);
+      expect(downloadRes.status).toBe(404);
+      expect(downloadRes.body.error.code).toBe('DOCUMENT_NOT_FOUND');
+
+      // Delete
+      const deleteRes = await request(app)
+        .delete(`/api/documents/${docInWorkspaceA}`)
+        .set('Authorization', `Bearer ${outsiderToken}`);
+      expect(deleteRes.status).toBe(404);
+      expect(deleteRes.body.error.code).toBe('DOCUMENT_NOT_FOUND');
     });
   });
 });

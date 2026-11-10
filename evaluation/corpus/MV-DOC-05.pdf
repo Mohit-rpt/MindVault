@@ -1,0 +1,54 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
+endobj
+4 0 obj
+<< /Length 1289 >>
+stream
+BT /F1 11 Tf 50 750 Td 14 TL
+(MindVault Configuration Reference: Infrastructure Environment Directives) '
+(Document Identifier: MV-DOC-05 | Version: 2.1 | Classification: Systems Architecture) '
+(==========================================================================) '
+() '
+(Section 1: Database and Pool Connection Bounds) '
+(DB_POOL_MAX=20 # Maximum concurrent connections per API gateway instance) '
+(DB_TIMEOUT_MS=5000 # Database query execution timeout in milliseconds) '
+(WORKER_CONCURRENCY=5 # Concurrent background jobs processed per worker node) '
+() '
+(Section 2: Document Payload Boundaries and Extractor Handling) '
+(MAX_FILE_SIZE_BYTES=26214400 # 25 Megabytes absolute payload boundary) '
+(Extractor error marks document FAILED with errorMessage in PostgreSQL documents table.) '
+() '
+(Section 3: Knowledge Graph Traversal Timeouts and Loop Guards) '
+(GRAPH_TIMEOUT_MS=2500 and visited set evaluation prevent cyclic loops during multi-hop path traversal.) '
+(Multi-hop queries abort after 2500ms to preserve generation response budgets.) '
+() '
+(Section 4: Retrieval Channel Weights and Thresholds) '
+(SIMILARITY_FLOOR=0.65 # Minimum cosine similarity required for vector chunk survival) '
+(FTS_WEIGHT=1.0 # Multiplier weight for PostgreSQL full-text search channel) '
+ET
+
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000001582 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1652
+%%EOF

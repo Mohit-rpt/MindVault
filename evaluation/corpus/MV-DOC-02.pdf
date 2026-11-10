@@ -1,0 +1,56 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
+endobj
+4 0 obj
+<< /Length 1687 >>
+stream
+BT /F1 11 Tf 50 750 Td 14 TL
+(MindVault Security Policy: Enterprise Zero-Trust and Identity Governance) '
+(Document Identifier: MV-DOC-02 | Version: 3.1 | Classification: Security Directive) '
+(==========================================================================) '
+() '
+(Section 1: Authentication Gateway and Token Lifecycle) '
+(Authentication filter executes prior to rate limiter. Missing Bearer token results in immediate 401 Unauthorized.) '
+(User access JWT tokens have a strict time-to-live \(TTL\) of 15 minutes. Refresh tokens rotate every 7 days.) '
+(Session authentication utilizes write-through caching; Redis failure triggers failover to PostgreSQL session backup table.) '
+() '
+(Section 2: Horizontal Multi-Tenant Isolation) '
+(Horizontal tenant isolation is cryptographically guaranteed by scoping every database predicate to the) '
+(verified workspaceId extracted from the signed token. RBAC links User via WorkspaceRole to Workspace, gating all) '
+(child Document and DocumentChunk records. Users cannot query assets belonging to foreign workspaces.) '
+() '
+(Section 3: Rate Limiting Boundaries and Governance) '
+(API rate limiting tiers: Free tier permits up to 100 req/min; Enterprise tier allows up to 1000 req/min before) '
+(returning HTTP 429 Too Many Requests.) '
+() '
+(Section 4: Role Hierarchy and Cryptographic Authority) '
+(Workspace Admin is scoped strictly to tenant assets including document uploads, user invites, and API keys.) '
+(Platform Superadmin oversees physical infrastructure and cluster nodes. Tenant encryption key rotation requires) '
+(Security Incident Officer role; Tier-1 on-call personnel do not possess key rotation authority.) '
+ET
+
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000001980 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+2050
+%%EOF

@@ -19,19 +19,50 @@ export function authorizeWorkspace(minRole: WorkspaceRole = 'MEMBER') {
       return;
     }
 
-    let workspaceId =
-      req.params.workspaceId ||
-      (req.headers['x-workspace-id'] as string | undefined) ||
-      (req.query.workspaceId as string | undefined) ||
-      (req.body?.workspaceId as string | undefined);
+    // 1. Check for route parameter workspace context (e.g., /api/workspaces/:id or :workspaceId)
+    const routeWorkspaceId =
+      req.params?.workspaceId ||
+      (req.baseUrl?.includes('workspaces') && req.params?.id ? req.params.id : undefined);
 
+    const headerWorkspaceId =
+      typeof req.headers['x-workspace-id'] === 'string' && req.headers['x-workspace-id'].trim()
+        ? req.headers['x-workspace-id'].trim()
+        : undefined;
+
+    // 2. Reject conflicting workspace identity between route parameter and X-Workspace-ID header
+    if (routeWorkspaceId && headerWorkspaceId && routeWorkspaceId !== headerWorkspaceId) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'CONFLICTING_WORKSPACE_ID',
+          message:
+            'Conflicting workspace identity provided between route parameter and X-Workspace-ID header',
+        },
+        meta: { timestamp: new Date().toISOString() },
+      });
+      return;
+    }
+
+    // 3. Resolve authoritative workspace ID: route parameter > header > query > body
+    let workspaceId: string | undefined =
+      routeWorkspaceId ||
+      headerWorkspaceId ||
+      (typeof req.query?.workspaceId === 'string' && req.query.workspaceId.trim()
+        ? req.query.workspaceId.trim()
+        : undefined) ||
+      (typeof req.body?.workspaceId === 'string' && req.body.workspaceId.trim()
+        ? req.body.workspaceId.trim()
+        : undefined);
+
+    let isResolvedFromDocument = false;
+
+    // 4. If no explicit workspace identifier was provided, attempt document context resolution
     if (!workspaceId) {
-      if (req.baseUrl.includes('workspaces') && req.params.id) {
-        workspaceId = req.params.id;
-      } else if (req.baseUrl.includes('documents') && req.params.id) {
+      if (req.baseUrl?.includes('documents') && req.params?.id) {
         const doc = await dbService.findDocumentById(req.params.id);
         if (doc) {
           workspaceId = doc.workspaceId;
+          isResolvedFromDocument = true;
         } else {
           res.status(404).json({
             success: false,
@@ -60,7 +91,19 @@ export function authorizeWorkspace(minRole: WorkspaceRole = 'MEMBER') {
       const member = await dbService.getWorkspaceMember(workspaceId, req.user.id);
 
       if (!member) {
-        // Prevent IDOR by returning 404 or 403
+        // Anti-enumeration: If resolved from document context, return 404 to avoid leaking document existence
+        if (isResolvedFromDocument) {
+          res.status(404).json({
+            success: false,
+            error: {
+              code: 'DOCUMENT_NOT_FOUND',
+              message: 'Document not found',
+            },
+            meta: { timestamp: new Date().toISOString() },
+          });
+          return;
+        }
+
         res.status(403).json({
           success: false,
           error: {

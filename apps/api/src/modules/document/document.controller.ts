@@ -6,6 +6,23 @@ import { AppError } from '../../middleware/errorHandler.js';
 export class DocumentController {
   constructor(private documentService: DocumentService = new DocumentService()) {}
 
+  /**
+   * Resolves the authoritative workspace ID, prioritizing the verified identity
+   * established by the authorizeWorkspace middleware.
+   */
+  private getAuthorizedWorkspaceId(req: Request): string {
+    const workspaceId =
+      req.workspaceMember?.workspaceId ||
+      (req.headers['x-workspace-id'] as string) ||
+      (req.query?.workspaceId as string) ||
+      (req.body?.workspaceId as string);
+
+    if (!workspaceId) {
+      throw new AppError(400, 'WORKSPACE_ID_REQUIRED', 'workspaceId is required');
+    }
+    return workspaceId;
+  }
+
   public upload = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       if (!req.file) {
@@ -16,13 +33,7 @@ export class DocumentController {
         );
       }
 
-      const workspaceId = (req.body.workspaceId ||
-        req.headers['x-workspace-id'] ||
-        req.query.workspaceId) as string;
-      if (!workspaceId) {
-        throw new AppError(400, 'WORKSPACE_ID_REQUIRED', 'workspaceId is required');
-      }
-
+      const workspaceId = this.getAuthorizedWorkspaceId(req);
       const userId = req.user!.id;
 
       const doc = await this.documentService.uploadDocument({
@@ -48,14 +59,7 @@ export class DocumentController {
 
   public list = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const workspaceId = (req.query.workspaceId || req.headers['x-workspace-id']) as string;
-      if (!workspaceId) {
-        throw new AppError(
-          400,
-          'WORKSPACE_ID_REQUIRED',
-          'workspaceId query parameter or header is required',
-        );
-      }
+      const workspaceId = this.getAuthorizedWorkspaceId(req);
 
       const query = DocumentListQuerySchema.parse(req.query);
       const result = await this.documentService.listDocuments(workspaceId, query);
@@ -75,10 +79,7 @@ export class DocumentController {
   public getById = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const documentId = req.params.id;
-      const workspaceId = (req.query.workspaceId || req.headers['x-workspace-id']) as string;
-      if (!workspaceId) {
-        throw new AppError(400, 'WORKSPACE_ID_REQUIRED', 'workspaceId is required');
-      }
+      const workspaceId = this.getAuthorizedWorkspaceId(req);
 
       const doc = await this.documentService.getDocumentById(workspaceId, documentId);
 
@@ -97,10 +98,7 @@ export class DocumentController {
   public getStatus = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const documentId = req.params.id;
-      const workspaceId = (req.query.workspaceId || req.headers['x-workspace-id']) as string;
-      if (!workspaceId) {
-        throw new AppError(400, 'WORKSPACE_ID_REQUIRED', 'workspaceId is required');
-      }
+      const workspaceId = this.getAuthorizedWorkspaceId(req);
 
       const status = await this.documentService.getDocumentStatus(workspaceId, documentId);
 
@@ -119,10 +117,7 @@ export class DocumentController {
   public delete = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const documentId = req.params.id;
-      const workspaceId = (req.query.workspaceId || req.headers['x-workspace-id']) as string;
-      if (!workspaceId) {
-        throw new AppError(400, 'WORKSPACE_ID_REQUIRED', 'workspaceId is required');
-      }
+      const workspaceId = this.getAuthorizedWorkspaceId(req);
 
       await this.documentService.deleteDocument(workspaceId, documentId);
 
@@ -143,10 +138,7 @@ export class DocumentController {
   public download = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const documentId = req.params.id;
-      const workspaceId = (req.query.workspaceId || req.headers['x-workspace-id']) as string;
-      if (!workspaceId) {
-        throw new AppError(400, 'WORKSPACE_ID_REQUIRED', 'workspaceId is required');
-      }
+      const workspaceId = this.getAuthorizedWorkspaceId(req);
 
       const { buffer, originalName, mimeType } = await this.documentService.downloadDocument(
         workspaceId,

@@ -71,11 +71,88 @@ MindVault transforms personal documents into actionable vector knowledge.
   });
 
   describe('extractPdf', () => {
+    function createTestPdf(pages: string[]): Buffer {
+      const contentObjs = pages.map((text, idx) => {
+        const stream = `BT /F1 12 Tf 72 712 Td (${text}) Tj ET`;
+        return `${5 + idx} 0 obj << /Length ${stream.length} >> stream\n${stream}\nendstream endobj`;
+      });
+      const pageKids = pages.map(
+        (_, idx) =>
+          `${3 + idx} 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents ${5 + idx} 0 R /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> >> endobj`,
+      );
+      const kidsArray = pages.map((_, idx) => `${3 + idx} 0 R`).join(' ');
+
+      const pdf = [
+        '%PDF-1.4',
+        '1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj',
+        `2 0 obj << /Type /Pages /Kids [${kidsArray}] /Count ${pages.length} >> endobj`,
+        ...pageKids,
+        ...contentObjs,
+        'xref',
+        `0 ${5 + pages.length * 2}`,
+        'trailer << /Root 1 0 R >>',
+        'startxref',
+        '500',
+        '%%EOF',
+      ].join('\n');
+      return Buffer.from(pdf, 'utf-8');
+    }
+
     it('should reject files without %PDF magic bytes', async () => {
       const invalidPdfBuffer = Buffer.from('This is not a PDF file');
       await expect(extractPdf(invalidPdfBuffer)).rejects.toThrow(
         /Invalid PDF: Missing %PDF header/,
       );
+    });
+
+    it('should extract text and page metadata from a valid single-page PDF', async () => {
+      const pdfBuffer = createTestPdf(['MindVault Architecture and Vector Indexing']);
+      const result = await extractPdf(pdfBuffer);
+
+      expect(result.pageCount).toBe(1);
+      expect(result.extractedText).toContain('MindVault Architecture and Vector Indexing');
+      expect(result.pages).toBeDefined();
+      expect(result.pages).toHaveLength(1);
+      expect(result.pages![0].pageNumber).toBe(1);
+      expect(result.pages![0].text).toContain('MindVault Architecture');
+      expect(result.warnings).toBeUndefined();
+    }, 15000);
+
+    it('should extract per-page text objects from a multi-page PDF', async () => {
+      const pdfBuffer = createTestPdf([
+        'Page 1: Distributed Sharding and Raft',
+        'Page 2: Cryptographic Key Lifecycle',
+      ]);
+      const result = await extractPdf(pdfBuffer);
+
+      expect(result.pageCount).toBe(2);
+      expect(result.pages).toHaveLength(2);
+      expect(result.pages![0].pageNumber).toBe(1);
+      expect(result.pages![0].text).toContain('Page 1: Distributed Sharding');
+      expect(result.pages![1].pageNumber).toBe(2);
+      expect(result.pages![1].text).toContain('Page 2: Cryptographic Key Lifecycle');
+    }, 15000);
+
+    it('should handle special characters and symbols correctly in PDF extraction', async () => {
+      const text = 'Directive: JWT_TTL=15m & MAX_POOL=20 [S1] © 2026';
+      const pdfBuffer = createTestPdf([text]);
+      const result = await extractPdf(pdfBuffer);
+
+      expect(result.extractedText).toContain('Directive: JWT_TTL=15m');
+      expect(result.pageCount).toBe(1);
+    });
+
+    it('should reject corrupted or malformed PDF with descriptive error', async () => {
+      const malformed = Buffer.from('%PDF-1.4 completely corrupted binary content');
+      await expect(extractPdf(malformed)).rejects.toThrow(/Corrupted or unreadable PDF/);
+    });
+
+    it('should flag scanned or image-only PDF with warning when text is less than 10 characters', async () => {
+      const minimalTextPdf = createTestPdf(['Hi']);
+      const result = await extractPdf(minimalTextPdf);
+
+      expect(result.warnings).toBeDefined();
+      expect(result.warnings![0]).toContain('Scanned or image-only PDF detected');
     });
   });
 

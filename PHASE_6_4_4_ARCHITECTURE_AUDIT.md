@@ -1,12 +1,13 @@
 # MindVault Phase 6.4.4 — Architecture Audit Report: Error Classification, Exact Delays & Status Precedence
 
 **Reference Blueprint:** Phase 6.4 Architecture Blueprint v4.5.6 (§6.4.2, §6.4.4, §6.9, Task 6.4.4, AC-05, AC-06, AC-10)  
-**Previous Verified Tasks:** 
+**Previous Verified Tasks:**
+
 - Task 6.4.1 (Heartbeat Freshness CAS & Recovery Fencing) — COMPLETE & VERIFIED
 - Task 6.4.2 (Graceful Worker Shutdown & Dual-Lease Deferral) — COMPLETE & VERIFIED
 - Task 6.4.3 (Database-Enforced Atomic Fencing & Checkpointing) — COMPLETE & VERIFIED  
-**Mode:** STRICT READ-ONLY ARCHITECTURE AUDIT (Zero Application/Schema Code Modified)  
-**Audit Date:** 2026-11-08  
+  **Mode:** STRICT READ-ONLY ARCHITECTURE AUDIT (Zero Application/Schema Code Modified)  
+  **Audit Date:** 2026-11-08
 
 ---
 
@@ -26,26 +27,27 @@ All audit findings, requirement traces, failure proofs, missing tests, and imple
 
 From `docs/phase-6/PHASE_6_4_AUDIT_AND_PLAN.md` (lines 2293–2307, lines 2026–2054, and lines 1586–1650):
 
-* **Task Title:** Task 6.4.4: Error Classification, Exact Delays & Status Precedence
-* **Objective:**
+- **Task Title:** Task 6.4.4: Error Classification, Exact Delays & Status Precedence
+- **Objective:**
   1. Implement `ExtractionErrorClassifier` to categorize all extraction failure modes into `TRANSIENT`, `PERMANENT`, `FENCED`, or `DEFERRED`.
   2. Enforce exact BullMQ retry delays: Attempt 1 = 0s, Attempt 2 = 2s, Attempt 3 = 4s.
   3. Implement the authoritative Final Status Precedence Decision Table (§6.9.2).
-* **Dependencies:** Task 6.4.3 (Complete & Verified).
-* **Blueprint Acceptance Criteria:**
+- **Dependencies:** Task 6.4.3 (Complete & Verified).
+- **Blueprint Acceptance Criteria:**
   - **AC-6.4.4-1:** Transient errors trigger exactly 2 BullMQ retries after 2s and 4s delays (3 total attempts).
   - **AC-6.4.4-2:** Partially succeeded documents are marked `PARTIAL` and preserved in the graph.
   - **AC-6.4.4-3:** Fully evaluated documents with zero extracted relations complete successfully as `COMPLETED`.
   - **AC-6.4.4-4:** Infrastructure retry exhaustion does not update PostgreSQL status to terminal `FAILED`.
-* **Topology Note:** The blueprint lists `apps/api/src/modules/graph/...` as the initial target; however, as mandated and verified in Phase 6.4.2 and Phase 6.4.3, `apps/worker` owns the sole production extraction runtime (`apps/worker/src/modules/graph/worker/graph-extraction.worker.ts`). Shared contracts reside in `packages/shared`.
+- **Topology Note:** The blueprint lists `apps/api/src/modules/graph/...` as the initial target; however, as mandated and verified in Phase 6.4.2 and Phase 6.4.3, `apps/worker` owns the sole production extraction runtime (`apps/worker/src/modules/graph/worker/graph-extraction.worker.ts`). Shared contracts reside in `packages/shared`.
 
 ---
 
 ## 2. Existing Architecture & Implementation Inspection
 
 ### A. Queue Retry Options & Delay Mathematics
-* **File:** [`packages/shared/src/types.ts`](file:///c:/Users/mohit/OneDrive/Desktop/MindVault/packages/shared/src/types.ts#L861-L875)
-* **Configuration:**
+
+- **File:** [`packages/shared/src/types.ts`](file:///c:/Users/mohit/OneDrive/Desktop/MindVault/packages/shared/src/types.ts#L861-L875)
+- **Configuration:**
   ```typescript
   export const GRAPH_QUEUE_DEFAULT_JOB_OPTIONS = {
     attempts: 3,
@@ -56,20 +58,21 @@ From `docs/phase-6/PHASE_6_4_AUDIT_AND_PLAN.md` (lines 2293–2307, lines 2026�
     ...
   };
   ```
-* **BullMQ Backoff Engine Verification:**  
+- **BullMQ Backoff Engine Verification:**  
   Inspecting installed BullMQ 6.6.0 source (`node_modules/bullmq/dist/esm/classes/backoffs.js` line 40):
   $$\text{delay} = \text{Math.round}(\text{Math.pow}(2, \text{attemptsMade} - 1) \times \text{delay})$$
   - Initial Attempt (1st attempt): $0\text{ms}$ delay.
   - Attempt 2 (1st retry, `attemptsMade = 1`): $2^{0} \times 2{,}000\text{ms} = 2{,}000\text{ms}$ ($2\text{s}$).
   - Attempt 3 (2nd retry, `attemptsMade = 2`): $2^{1} \times 2{,}000\text{ms} = 4{,}000\text{ms}$ ($4\text{s}$).
   - After Attempt 3 fails (`attemptsMade = 3`): Job is moved to BullMQ `failed` set in Redis.
-* **Audit Assessment:** **PASS** on configuration mathematics. However, see Defect D1 below regarding worker execution.
+- **Audit Assessment:** **PASS** on configuration mathematics. However, see Defect D1 below regarding worker execution.
 
 ---
 
 ### B. Current Worker Error Handling
-* **File:** [`apps/worker/src/modules/graph/worker/graph-extraction.worker.ts`](file:///c:/Users/mohit/OneDrive/Desktop/MindVault/apps/worker/src/modules/graph/worker/graph-extraction.worker.ts#L358-L371)
-* **Observed Chunk Loop Catch Block:**
+
+- **File:** [`apps/worker/src/modules/graph/worker/graph-extraction.worker.ts`](file:///c:/Users/mohit/OneDrive/Desktop/MindVault/apps/worker/src/modules/graph/worker/graph-extraction.worker.ts#L358-L371)
+- **Observed Chunk Loop Catch Block:**
   ```typescript
   try {
     const result = await this.service.extractFromChunk(...);
@@ -88,7 +91,7 @@ From `docs/phase-6/PHASE_6_4_AUDIT_AND_PLAN.md` (lines 2293–2307, lines 2026�
     // Continue to next chunk or handle according to chunk error policies
   }
   ```
-* **Observed Terminal Completion Evaluation:**
+- **Observed Terminal Completion Evaluation:**
   ```typescript
   const allChunksCompleted = lastCompletedIndex === totalChunks - 1 && totalChunks > 0;
 
@@ -101,7 +104,7 @@ From `docs/phase-6/PHASE_6_4_AUDIT_AND_PLAN.md` (lines 2293–2307, lines 2026�
     await heartbeatManager.terminate();
   }
   ```
-* **Audit Assessment:** **FAIL**. When a chunk fails with an unhandled transient or permanent error:
+- **Audit Assessment:** **FAIL**. When a chunk fails with an unhandled transient or permanent error:
   1. The error is logged and discarded.
   2. The loop proceeds to chunk $i+1$.
   3. `allChunksCompleted` evaluates to `false` because `lastCompletedIndex` did not reach $K - 1$.
@@ -112,26 +115,27 @@ From `docs/phase-6/PHASE_6_4_AUDIT_AND_PLAN.md` (lines 2293–2307, lines 2026�
 ---
 
 ### C. Existing Error Classes
-* **File:** [`apps/worker/src/modules/graph/errors/extraction-fenced.error.ts`](file:///c:/Users/mohit/OneDrive/Desktop/MindVault/apps/worker/src/modules/graph/errors/extraction-fenced.error.ts)
-* Only `ExtractionFencedError` is implemented.
-* `ExtractionTransientError`, `ExtractionPermanentError`, and `ExtractionErrorClassifier` are **MISSING**.
+
+- **File:** [`apps/worker/src/modules/graph/errors/extraction-fenced.error.ts`](file:///c:/Users/mohit/OneDrive/Desktop/MindVault/apps/worker/src/modules/graph/errors/extraction-fenced.error.ts)
+- Only `ExtractionFencedError` is implemented.
+- `ExtractionTransientError`, `ExtractionPermanentError`, and `ExtractionErrorClassifier` are **MISSING**.
 
 ---
 
 ## 3. Requirement-to-Code Traceability Matrix
 
-| Blueprint Requirement | Location in Blueprint | Current Repository State | Finding Classification | Traceability Detail |
-| :--- | :--- | :--- | :---: | :--- |
-| **`ExtractionErrorClassifier` Implementation** | §8 Task 6.4.4, §9.1 | Missing from `apps/worker` and `apps/api` | **FAIL** | No classification helper exists to categorize 429, timeouts, network faults vs. schema/parsing errors. |
-| **`ExtractionTransientError` & `ExtractionPermanentError`** | §6.4.2, §6.4.4 | Missing | **FAIL** | Only `ExtractionFencedError` is implemented. |
-| **Exact 2s & 4s Retry Delays** | §6.9.3, AC-10 | Configured in `packages/shared/src/types.ts` (`delay: 2000`, `attempts: 3`) | **WARNING** | BullMQ options are mathematically exact, but worker swallows errors so retries are never initiated. |
-| **Status Case 1: All Chunks Succeeded $\to$ `COMPLETED`** | §6.9.2 Case 1 | Implemented in `graph-extraction.worker.ts` line 448 | **PASS** | `COMPLETED` receipt committed and `graphStatus = 'COMPLETED'` set atomically in PostgreSQL. |
-| **Status Case 2 & 3: Partial Success ($S > 0, F > 0$) $\to$ `PARTIAL`** | §6.9.2 Cases 2 & 3 | Missing from `graph-extraction.worker.ts` | **FAIL** | When some chunks succeed and others fail, worker drops into `else` without writing `PARTIAL` status or receipt. |
-| **Status Case 4a: Zero Chunks Succeeded ($S=0, F=N$) $\to$ `FAILED`** | §6.9.2 Case 4a | Missing from `graph-extraction.worker.ts` | **FAIL** | Permanent failure on all chunks drops into `else` without writing terminal `FAILED` receipt. |
-| **Status Case 4b: Infrastructure Exhaustion $\to$ `PROCESSING` (No FAILED)** | §6.9.2 Case 4b, §6.4.2 | Supported by `dispatch-recovery.service.ts` | **PASS** | Recovery loop respects missing receipts and treats exhausted jobs as transient, preventing false `FAILED`. |
-| **Status Case 5: Fatal Document Error $\to$ `FAILED`** | §6.9.2 Case 5 | Incomplete in worker | **WARNING** | Missing document logs warning and returns without durable receipt. |
-| **Status Case 6: Shutdown Deferral $\to$ `QUEUED`** | §6.9.2 Case 6, Task 6.4.2 | Implemented in `graph-extraction.worker.ts` lines 376–429 | **PASS** | Cooperative deferral via `moveToWait(token)` and `WaitingError` preserves checkpoints and `QUEUED` status. |
-| **Zero Extracted Relations $\to$ `COMPLETED`** | §6.9.2 Case 1, AC-05 | Implemented in `graph-extraction.service.ts` & `graph-extraction.worker.ts` | **PASS** | Valid chunks with 0 relations evaluate all chunks successfully and commit `COMPLETED`. |
+| Blueprint Requirement                                                        | Location in Blueprint     | Current Repository State                                                    | Finding Classification | Traceability Detail                                                                                             |
+| :--------------------------------------------------------------------------- | :------------------------ | :-------------------------------------------------------------------------- | :--------------------: | :-------------------------------------------------------------------------------------------------------------- |
+| **`ExtractionErrorClassifier` Implementation**                               | §8 Task 6.4.4, §9.1       | Missing from `apps/worker` and `apps/api`                                   |        **FAIL**        | No classification helper exists to categorize 429, timeouts, network faults vs. schema/parsing errors.          |
+| **`ExtractionTransientError` & `ExtractionPermanentError`**                  | §6.4.2, §6.4.4            | Missing                                                                     |        **FAIL**        | Only `ExtractionFencedError` is implemented.                                                                    |
+| **Exact 2s & 4s Retry Delays**                                               | §6.9.3, AC-10             | Configured in `packages/shared/src/types.ts` (`delay: 2000`, `attempts: 3`) |      **WARNING**       | BullMQ options are mathematically exact, but worker swallows errors so retries are never initiated.             |
+| **Status Case 1: All Chunks Succeeded $\to$ `COMPLETED`**                    | §6.9.2 Case 1             | Implemented in `graph-extraction.worker.ts` line 448                        |        **PASS**        | `COMPLETED` receipt committed and `graphStatus = 'COMPLETED'` set atomically in PostgreSQL.                     |
+| **Status Case 2 & 3: Partial Success ($S > 0, F > 0$) $\to$ `PARTIAL`**      | §6.9.2 Cases 2 & 3        | Missing from `graph-extraction.worker.ts`                                   |        **FAIL**        | When some chunks succeed and others fail, worker drops into `else` without writing `PARTIAL` status or receipt. |
+| **Status Case 4a: Zero Chunks Succeeded ($S=0, F=N$) $\to$ `FAILED`**        | §6.9.2 Case 4a            | Missing from `graph-extraction.worker.ts`                                   |        **FAIL**        | Permanent failure on all chunks drops into `else` without writing terminal `FAILED` receipt.                    |
+| **Status Case 4b: Infrastructure Exhaustion $\to$ `PROCESSING` (No FAILED)** | §6.9.2 Case 4b, §6.4.2    | Supported by `dispatch-recovery.service.ts`                                 |        **PASS**        | Recovery loop respects missing receipts and treats exhausted jobs as transient, preventing false `FAILED`.      |
+| **Status Case 5: Fatal Document Error $\to$ `FAILED`**                       | §6.9.2 Case 5             | Incomplete in worker                                                        |      **WARNING**       | Missing document logs warning and returns without durable receipt.                                              |
+| **Status Case 6: Shutdown Deferral $\to$ `QUEUED`**                          | §6.9.2 Case 6, Task 6.4.2 | Implemented in `graph-extraction.worker.ts` lines 376–429                   |        **PASS**        | Cooperative deferral via `moveToWait(token)` and `WaitingError` preserves checkpoints and `QUEUED` status.      |
+| **Zero Extracted Relations $\to$ `COMPLETED`**                               | §6.9.2 Case 1, AC-05      | Implemented in `graph-extraction.service.ts` & `graph-extraction.worker.ts` |        **PASS**        | Valid chunks with 0 relations evaluate all chunks successfully and commit `COMPLETED`.                          |
 
 ---
 
@@ -140,28 +144,34 @@ From `docs/phase-6/PHASE_6_4_AUDIT_AND_PLAN.md` (lines 2293–2307, lines 2026�
 ### The Six Explicit Distributed Failure Scenarios (§6.4.4 Traceability)
 
 #### Scenario 1: PostgreSQL Finalization Succeeds, Worker Crashes Before BullMQ Acknowledgement
+
 - **Verification:** Task 6.4.3 implemented atomic pre-commit lease validation and committed `metadata.graphFinalizationReceipt` in PostgreSQL WAL. When a redelivered job arrives, the worker detects the receipt and fast-exits without re-extracting.
 - **Classification:** **PASS** (Protected by Task 6.4.3).
 
 #### Scenario 2: BullMQ Retries a Job Whose PostgreSQL Receipt is Already `COMPLETED`
+
 - **Verification:** When BullMQ executes Attempt 2 after a transient Redis disconnect, Worker Entry Protection inspects `graphFinalizationReceipt`. If `terminalStatus === 'COMPLETED'`, it returns immediately.
 - **Classification:** **PASS** (Protected by Task 6.4.3).
 
 #### Scenario 3: BullMQ Exhausts Attempts After PostgreSQL Has Committed `PARTIAL`
+
 - **Defect in Current Code:** The worker does not yet write a `PARTIAL` receipt! If chunk 0 succeeds and chunk 1 fails permanently, no receipt is persisted. If BullMQ exhausts attempts, the reconciler sees `receipt === null` and treats it as an infrastructure failure, leading to redundant recovery attempts.
 - **Required 6.4.4 Fix:** The worker must commit a valid terminal receipt with `terminalStatus: 'PARTIAL'` (`succeededChunksCount > 0, failedChunksCount > 0, processedChunksCount === totalChunks`) before the job finishes.
 - **Classification:** **FAIL** (Must be implemented in Task 6.4.4).
 
 #### Scenario 4: BullMQ Reports `FAILED` While PostgreSQL Contains a Valid Terminal `FAILED` Receipt
+
 - **Defect in Current Code:** The worker does not write a `FAILED` receipt on permanent document errors.
 - **Required 6.4.4 Fix:** The worker must commit `metadata.graphStatus = 'FAILED'` and write a `FAILED` receipt with `succeededChunksCount: 0, failedChunksCount: N` before bubbling `UnrecoverableError` or terminating.
 - **Classification:** **FAIL** (Must be implemented in Task 6.4.4).
 
 #### Scenario 5: Stale Worker Attempts Execution After Another Run Has Superseded It
+
 - **Verification:** Step 1 `FOR NO KEY UPDATE` and Step 2 snapshot checking in `persistChunkExtraction` verify `extractionRunId` and `graphWorkerToken`. If superseded, throws `ExtractionFencedError`, rolling back writes.
 - **Classification:** **PASS** (Protected by Task 6.4.3).
 
 #### Scenario 6: Two Workers Receive Same Run Concurrently (Same-Run Contention)
+
 - **Verification:** Protected by Tier 1 document row lock, Redis lease Lua scripts, and BullMQ cooperative deferral.
 - **Classification:** **PASS** (Protected by Task 6.4.2 & Task 6.4.3).
 
@@ -185,10 +195,11 @@ From `docs/phase-6/PHASE_6_4_AUDIT_AND_PLAN.md` (lines 2293–2307, lines 2026�
 ## 6. Identified Defects & Reproducible Scenarios
 
 ### Defect D1: Worker Swallows Chunk Extraction Errors, Masking Failures from BullMQ
-* **Severity:** CRITICAL
-* **Classification:** **FAIL**
-* **Root Cause:** [`apps/worker/src/modules/graph/worker/graph-extraction.worker.ts`](file:///c:/Users/mohit/OneDrive/Desktop/MindVault/apps/worker/src/modules/graph/worker/graph-extraction.worker.ts#L358-L370) catches all errors from `this.service.extractFromChunk()`, logs them, and takes no further action.
-* **Reproducible Scenario:**
+
+- **Severity:** CRITICAL
+- **Classification:** **FAIL**
+- **Root Cause:** [`apps/worker/src/modules/graph/worker/graph-extraction.worker.ts`](file:///c:/Users/mohit/OneDrive/Desktop/MindVault/apps/worker/src/modules/graph/worker/graph-extraction.worker.ts#L358-L370) catches all errors from `this.service.extractFromChunk()`, logs them, and takes no further action.
+- **Reproducible Scenario:**
   1. Ollama or Gemini encounters a transient network timeout (`ETIMEDOUT`) during chunk 0.
   2. `extractFromChunk` throws `Error("Ollama extraction timed out after 30000ms")`.
   3. Worker catch block logs `Error extracting chunk...` and does not throw.
@@ -200,10 +211,11 @@ From `docs/phase-6/PHASE_6_4_AUDIT_AND_PLAN.md` (lines 2293–2307, lines 2026�
 ---
 
 ### Defect D2: Missing `PARTIAL` Terminal Receipt & Document Transition
-* **Severity:** HIGH
-* **Classification:** **FAIL**
-* **Root Cause:** [`apps/worker/src/modules/graph/worker/graph-extraction.worker.ts`](file:///c:/Users/mohit/OneDrive/Desktop/MindVault/apps/worker/src/modules/graph/worker/graph-extraction.worker.ts#L431-L474) only handles `allChunksCompleted = true` (all succeeded). It lacks an execution branch for `succeededChunksCount > 0 && failedChunksCount > 0 && processedChunksCount === totalChunks`.
-* **Reproducible Scenario:**
+
+- **Severity:** HIGH
+- **Classification:** **FAIL**
+- **Root Cause:** [`apps/worker/src/modules/graph/worker/graph-extraction.worker.ts`](file:///c:/Users/mohit/OneDrive/Desktop/MindVault/apps/worker/src/modules/graph/worker/graph-extraction.worker.ts#L431-L474) only handles `allChunksCompleted = true` (all succeeded). It lacks an execution branch for `succeededChunksCount > 0 && failedChunksCount > 0 && processedChunksCount === totalChunks`.
+- **Reproducible Scenario:**
   1. Document has 5 chunks.
   2. Chunks 0, 1, 2 succeed and commit valid entities and relations to the graph.
   3. Chunk 3 fails permanently due to invalid schema/corrupt text.
@@ -216,10 +228,11 @@ From `docs/phase-6/PHASE_6_4_AUDIT_AND_PLAN.md` (lines 2293–2307, lines 2026�
 ---
 
 ### Defect D3: Missing `FAILED` Terminal Receipt for Permanent Document Errors
-* **Severity:** HIGH
-* **Classification:** **FAIL**
-* **Root Cause:** [`apps/worker/src/modules/graph/worker/graph-extraction.worker.ts`](file:///c:/Users/mohit/OneDrive/Desktop/MindVault/apps/worker/src/modules/graph/worker/graph-extraction.worker.ts#L431-L474) has no terminal failure finalizer for permanent errors ($S = 0, F = N$).
-* **Reproducible Scenario:**
+
+- **Severity:** HIGH
+- **Classification:** **FAIL**
+- **Root Cause:** [`apps/worker/src/modules/graph/worker/graph-extraction.worker.ts`](file:///c:/Users/mohit/OneDrive/Desktop/MindVault/apps/worker/src/modules/graph/worker/graph-extraction.worker.ts#L431-L474) has no terminal failure finalizer for permanent errors ($S = 0, F = N$).
+- **Reproducible Scenario:**
   1. Document contains corrupt binary text causing 100% of chunks to fail schema validation.
   2. All chunks fail permanently.
   3. Worker exits without writing a receipt.
@@ -228,9 +241,10 @@ From `docs/phase-6/PHASE_6_4_AUDIT_AND_PLAN.md` (lines 2293–2307, lines 2026�
 ---
 
 ### Defect D4: Absence of `ExtractionErrorClassifier`
-* **Severity:** MEDIUM
-* **Classification:** **FAIL**
-* **Root Cause:** No classification service exists to categorize runtime errors into `TRANSIENT`, `PERMANENT`, `FENCED`, or `DEFERRED`.
+
+- **Severity:** MEDIUM
+- **Classification:** **FAIL**
+- **Root Cause:** No classification service exists to categorize runtime errors into `TRANSIENT`, `PERMANENT`, `FENCED`, or `DEFERRED`.
 
 ---
 
@@ -259,18 +273,18 @@ The following test suites must be created in Task 6.4.4:
 
 ## 8. Backward-Compatibility Assessment
 
-* **Task 6.4.1 Compatibility:**
+- **Task 6.4.1 Compatibility:**
   - `apps/worker/src/services/dispatch-recovery.service.ts` CAS predicates and recovery sweeps rely on `metadata.graphFinalizationReceipt`. Task 6.4.4's implementation of `PARTIAL` and `FAILED` receipts directly fulfills the contract expected by `dispatch-recovery.service.ts` (lines 411–422).
   - Assessment: **100% Backward Compatible**.
-* **Task 6.4.2 Compatibility:**
+- **Task 6.4.2 Compatibility:**
   - `apps/worker/src/modules/graph/worker/graph-extraction.worker.ts` shutdown deferral via `moveToWait(token)` and `WaitingError` remains untouched. In the classifier, `WaitingError` is categorized as `DEFERRED` and bypassed.
   - All 15 adversarial tests in `graph-worker-shutdown.test.ts` will continue to pass.
   - Assessment: **100% Backward Compatible**.
-* **Task 6.4.3 Compatibility:**
+- **Task 6.4.3 Compatibility:**
   - Database row locking (`FOR NO KEY UPDATE`), ascending advisory locks, and atomic checkpoint persistence in `persistChunkExtraction` are preserved. Checkpoint tracking of `succeededChunksCount` and `failedChunksCount` feeds directly into the status precedence table.
   - All 10 adversarial tests in `graph-atomic-fencing.test.ts` will continue to pass.
   - Assessment: **100% Backward Compatible**.
-* **Database Schema & Migrations:**
+- **Database Schema & Migrations:**
   - No database migration or Prisma schema change is required. All state transitions (`COMPLETED`, `PARTIAL`, `FAILED`, `PROCESSING`, `QUEUED`) and receipts reside in the existing `documents.metadata` JSONB column.
   - Assessment: **Zero Schema Migration Impact**.
 
@@ -330,14 +344,14 @@ flowchart TD
 
 ## 11. Explicit List of Files Requiring Modification
 
-| File Path | Action | Scope of Changes |
-| :--- | :---: | :--- |
-| `apps/worker/src/modules/graph/errors/extraction-error.classifier.ts` | **Create** | Implements `ExtractionErrorClassifier`, `ExtractionTransientError`, `ExtractionPermanentError`. |
-| `apps/worker/src/modules/graph/__tests__/extraction-error.classifier.test.ts` | **Create** | Unit tests for error classifier across network, rate limit, timeout, schema, and deadlock errors. |
-| `apps/worker/src/modules/graph/__tests__/extraction-status-precedence.test.ts` | **Create** | Adversarial tests for retry delays, partial success, permanent failure, zero relations, and retry exhaustion. |
-| `apps/worker/src/modules/graph/worker/graph-extraction.worker.ts` | **Modify** | Integrate error classifier in chunk catch block; bubble transient errors; implement `PARTIAL` and `FAILED` finalization. |
-| `packages/shared/src/types.ts` | **Modify** | Export `ExtractionErrorType` and finalization receipt schema helper types if shared across packages. |
-| `apps/api/src/modules/graph/errors/extraction-error.classifier.ts` | **Create (Optional)** | Stub re-export for API package backward compatibility if referenced by API tests. |
+| File Path                                                                      |        Action         | Scope of Changes                                                                                                         |
+| :----------------------------------------------------------------------------- | :-------------------: | :----------------------------------------------------------------------------------------------------------------------- |
+| `apps/worker/src/modules/graph/errors/extraction-error.classifier.ts`          |      **Create**       | Implements `ExtractionErrorClassifier`, `ExtractionTransientError`, `ExtractionPermanentError`.                          |
+| `apps/worker/src/modules/graph/__tests__/extraction-error.classifier.test.ts`  |      **Create**       | Unit tests for error classifier across network, rate limit, timeout, schema, and deadlock errors.                        |
+| `apps/worker/src/modules/graph/__tests__/extraction-status-precedence.test.ts` |      **Create**       | Adversarial tests for retry delays, partial success, permanent failure, zero relations, and retry exhaustion.            |
+| `apps/worker/src/modules/graph/worker/graph-extraction.worker.ts`              |      **Modify**       | Integrate error classifier in chunk catch block; bubble transient errors; implement `PARTIAL` and `FAILED` finalization. |
+| `packages/shared/src/types.ts`                                                 |      **Modify**       | Export `ExtractionErrorType` and finalization receipt schema helper types if shared across packages.                     |
+| `apps/api/src/modules/graph/errors/extraction-error.classifier.ts`             | **Create (Optional)** | Stub re-export for API package backward compatibility if referenced by API tests.                                        |
 
 ---
 
@@ -345,20 +359,20 @@ flowchart TD
 
 Non-destructive commands executed during this audit:
 
-* **Monorepo Tests (`pnpm test`):**
+- **Monorepo Tests (`pnpm test`):**
   - Total test files: 46
   - Passed: 34 files (303 passed tests, 79 skipped tests)
   - Failed: 12 files (all 12 are `apps/api` integration test suites requiring a live PostgreSQL test container on `localhost:5433`; Docker Desktop Linux engine was offline on host)
   - Failed assertions: **0** (all failures are environmental database connection errors in `beforeAll`)
-* **Worker Test Suite (`pnpm vitest run apps/worker`):**
+- **Worker Test Suite (`pnpm vitest run apps/worker`):**
   - **9 passed (100%)** test files
   - **94 passed (100%)** tests
   - Duration: 8.65s
-* **TypeScript Compilation (`pnpm typecheck`):**
+- **TypeScript Compilation (`pnpm typecheck`):**
   - Exit code 0 across all packages (`@mindvault/shared`, `@mindvault/api`, `@mindvault/worker`, `@mindvault/web`)
-* **Linter (`pnpm lint`):**
+- **Linter (`pnpm lint`):**
   - Exit code 0 across entire monorepo (0 errors, 401 pre-existing warnings)
-* **Production Build (`pnpm build`):**
+- **Production Build (`pnpm build`):**
   - Exit code 0 across all 4 packages (shared, api, worker, and web Vite bundle)
 
 ---

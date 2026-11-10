@@ -1,0 +1,54 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
+endobj
+4 0 obj
+<< /Length 1550 >>
+stream
+BT /F1 11 Tf 50 750 Td 14 TL
+(MindVault Protocol Specification: API Gateway Routing and Server-Sent Events) '
+(Document Identifier: MV-DOC-04 | Version: 1.8 | Classification: Integration Protocol) '
+(==========================================================================) '
+() '
+(Section 1: Gateway Routing Architecture and Endpoints) '
+(The gateway dispatches incoming POST /api/rag/stream requests to RAGService. RAGService triggers RetrievalService) '
+(on PostgreSQL document_chunks using hybrid vector and keyword channels. SSE stream lifecycle emits standard events:) '
+(start -> retrieval_complete -> sources -> token* -> validation -> done.) '
+() '
+(Section 2: Connection Heartbeat and Abort Lifecycle) '
+(The gateway dispatches a comment heartbeat \(: ping\) every 15 seconds to prevent intermediate proxy timeout.) '
+(Client socket termination propagates an AbortSignal, terminating upstream LLM generators and marking the record CANCELLED.) '
+() '
+(Section 3: Error Envelopes and Ingestion Format Boundaries) '
+(Supported extensions: .pdf, .docx, .txt, .md. Spreadsheets must be converted to Markdown tables.) '
+(Error event envelope emits code FILE_TOO_LARGE and transitions document to FAILED when payload exceeds 25MB boundary.) '
+() '
+(Section 4: Context Assembly Dual Budgeting Limits) '
+(Rate limit excess yields 429 Too Many Requests. ContextAssembler drops chunks exceeding maxContextTokens according to) '
+(the 75% narrative floor and 25% graph ceiling policy. Chunks that do not fit within the token budget are omitted.) '
+ET
+
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000001843 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1913
+%%EOF

@@ -1,12 +1,13 @@
 # MindVault Phase 6.4.4 — Implementation Report: Error Classification, Deterministic Retry Handling & Finalization Precedence
 
 **Reference Architecture:** MindVault Phase 6.4 Blueprint v4.5.6 (§6.4.2, §6.4.4, §6.9, Task 6.4.4, AC-05, AC-10, AC-24)  
-**Prerequisites:** 
+**Prerequisites:**
+
 - Task 6.4.1 (Heartbeat Freshness CAS & Recovery Fencing) — COMPLETE & VERIFIED
 - Task 6.4.2 (Graceful Worker Shutdown & Dual-Lease Deferral) — COMPLETE & VERIFIED
 - Task 6.4.3 (Database-Enforced Atomic Fencing & Checkpointing) — COMPLETE & VERIFIED  
-**Deliverable Status:** COMPLETE, VERIFIED & PASSING ALL QUALITY GATES  
-**Date:** 2026-11-08  
+  **Deliverable Status:** COMPLETE, VERIFIED & PASSING ALL QUALITY GATES  
+  **Date:** 2026-11-08
 
 ---
 
@@ -17,6 +18,7 @@ Phase 6.4.4 resolves the distributed failure-handling boundary between **transie
 Prior to this task, the worker caught, logged, and discarded extraction errors during chunk processing. As a consequence, failing jobs returned cleanly to BullMQ, which marked them as completed (`job.moveToCompleted()`). Retries were never triggered, documents remained indefinitely in `PROCESSING` without receipts, and `PARTIAL` or `FAILED` terminal states were never committed.
 
 In Phase 6.4.4, we implemented:
+
 1. **`ExtractionErrorClassifier`**: Deterministically categorizes errors across HTTP 429 rate limits, network timeouts, upstream LLM disconnections, PostgreSQL deadlocks (`40P01`), schema validation failures (`ZodError`, JSON syntax errors), fencing violations (`ExtractionFencedError`), and cooperative deferral signals (`WaitingError`).
 2. **`ExtractionTransientError` and `ExtractionPermanentError`**: Custom error classes preserving error causes and sanitizing error messages via `sanitizeErrorMessage()`.
 3. **Exact BullMQ Retry Delays**: Confirmed mathematical alignment with BullMQ's exponential backoff engine: Attempt 1 = 0s, Attempt 2 = 2s, Attempt 3 = 4s (3 max attempts).
@@ -31,27 +33,28 @@ In Phase 6.4.4, we implemented:
 
 ## 2. Requirement-to-Code Traceability Matrix
 
-| Blueprint Requirement | Location in Blueprint | Implementation File & Location | Verification Suite & Test Case | Status |
-| :--- | :--- | :--- | :--- | :---: |
-| **`ExtractionErrorClassifier`** | §8 Task 6.4.4, §9.1 | `apps/worker/src/modules/graph/errors/extraction-error.classifier.ts` | `extraction-error.classifier.test.ts` (16 unit tests) | **PASS** |
-| **`ExtractionTransientError` & `ExtractionPermanentError`** | §6.4.2, §6.4.4 | `apps/worker/src/modules/graph/errors/extraction-error.classifier.ts` | `extraction-error.classifier.test.ts` | **PASS** |
-| **Exact 2s & 4s Retry Delays** | §6.9.3, AC-10 | `packages/shared/src/types.ts` (`GRAPH_QUEUE_DEFAULT_JOB_OPTIONS`) | `extraction-status-precedence.test.ts` (TC-08) | **PASS** |
-| **Status Case 1: All Succeeded $\to$ `COMPLETED`** | §6.9.2 Case 1 | `apps/worker/src/modules/graph/services/status-precedence.ts` | `extraction-status-precedence.test.ts` (TC-01) | **PASS** |
-| **Status Case 1: Zero Relations $\to$ `COMPLETED`** | §6.9.2 Case 1, AC-05 | `apps/worker/src/modules/graph/services/status-precedence.ts` | `extraction-status-precedence.test.ts` (TC-02) | **PASS** |
-| **Status Case 2 & 3: Partial Success $\to$ `PARTIAL`** | §6.9.2 Case 2 & 3 | `apps/worker/src/modules/graph/services/status-precedence.ts` | `extraction-status-precedence.test.ts` (TC-03) | **PASS** |
-| **Status Case 4a: Permanent Failure $\to$ `FAILED`** | §6.9.2 Case 4a | `apps/worker/src/modules/graph/worker/graph-extraction.worker.ts` | `extraction-status-precedence.test.ts` (TC-04) | **PASS** |
-| **Status Case 4b: Transient Failure $\to$ `PROCESSING` (No FAILED)** | §6.9.2 Case 4b, §6.4.2 | `apps/worker/src/modules/graph/worker/graph-extraction.worker.ts` | `extraction-status-precedence.test.ts` (TC-05) | **PASS** |
-| **Strengthened Receipt Invariants (AC-24)** | §6.4.5, AC-24 | `packages/shared/src/types.ts` (`validateFinalizationReceipt`) | `extraction-status-precedence.test.ts` (TC-06) | **PASS** |
-| **Fenced Worker Immediate Halt** | §6.4.3, §6.4.4 | `apps/worker/src/modules/graph/worker/graph-extraction.worker.ts` | `extraction-status-precedence.test.ts` (TC-07) | **PASS** |
-| **Shutdown Deferral Integrity** | §6.7.1, Task 6.4.2 | `apps/worker/src/modules/graph/worker/graph-extraction.worker.ts` | `graph-worker-shutdown.test.ts` (15 tests) | **PASS** |
-| **Atomic Checkpoint & Advisory Locks** | §6.2.4, Task 6.4.3 | `apps/worker/src/modules/graph/services/graph-extraction.service.ts` | `graph-atomic-fencing.test.ts` (10 tests) | **PASS** |
-| **Heartbeat CAS & Sweep Recovery** | §6.3.5, Task 6.4.1 | `apps/worker/src/services/dispatch-recovery.service.ts` | `dispatch-recovery.service.test.ts` (36 tests) | **PASS** |
+| Blueprint Requirement                                                | Location in Blueprint  | Implementation File & Location                                        | Verification Suite & Test Case                        |  Status  |
+| :------------------------------------------------------------------- | :--------------------- | :-------------------------------------------------------------------- | :---------------------------------------------------- | :------: |
+| **`ExtractionErrorClassifier`**                                      | §8 Task 6.4.4, §9.1    | `apps/worker/src/modules/graph/errors/extraction-error.classifier.ts` | `extraction-error.classifier.test.ts` (16 unit tests) | **PASS** |
+| **`ExtractionTransientError` & `ExtractionPermanentError`**          | §6.4.2, §6.4.4         | `apps/worker/src/modules/graph/errors/extraction-error.classifier.ts` | `extraction-error.classifier.test.ts`                 | **PASS** |
+| **Exact 2s & 4s Retry Delays**                                       | §6.9.3, AC-10          | `packages/shared/src/types.ts` (`GRAPH_QUEUE_DEFAULT_JOB_OPTIONS`)    | `extraction-status-precedence.test.ts` (TC-08)        | **PASS** |
+| **Status Case 1: All Succeeded $\to$ `COMPLETED`**                   | §6.9.2 Case 1          | `apps/worker/src/modules/graph/services/status-precedence.ts`         | `extraction-status-precedence.test.ts` (TC-01)        | **PASS** |
+| **Status Case 1: Zero Relations $\to$ `COMPLETED`**                  | §6.9.2 Case 1, AC-05   | `apps/worker/src/modules/graph/services/status-precedence.ts`         | `extraction-status-precedence.test.ts` (TC-02)        | **PASS** |
+| **Status Case 2 & 3: Partial Success $\to$ `PARTIAL`**               | §6.9.2 Case 2 & 3      | `apps/worker/src/modules/graph/services/status-precedence.ts`         | `extraction-status-precedence.test.ts` (TC-03)        | **PASS** |
+| **Status Case 4a: Permanent Failure $\to$ `FAILED`**                 | §6.9.2 Case 4a         | `apps/worker/src/modules/graph/worker/graph-extraction.worker.ts`     | `extraction-status-precedence.test.ts` (TC-04)        | **PASS** |
+| **Status Case 4b: Transient Failure $\to$ `PROCESSING` (No FAILED)** | §6.9.2 Case 4b, §6.4.2 | `apps/worker/src/modules/graph/worker/graph-extraction.worker.ts`     | `extraction-status-precedence.test.ts` (TC-05)        | **PASS** |
+| **Strengthened Receipt Invariants (AC-24)**                          | §6.4.5, AC-24          | `packages/shared/src/types.ts` (`validateFinalizationReceipt`)        | `extraction-status-precedence.test.ts` (TC-06)        | **PASS** |
+| **Fenced Worker Immediate Halt**                                     | §6.4.3, §6.4.4         | `apps/worker/src/modules/graph/worker/graph-extraction.worker.ts`     | `extraction-status-precedence.test.ts` (TC-07)        | **PASS** |
+| **Shutdown Deferral Integrity**                                      | §6.7.1, Task 6.4.2     | `apps/worker/src/modules/graph/worker/graph-extraction.worker.ts`     | `graph-worker-shutdown.test.ts` (15 tests)            | **PASS** |
+| **Atomic Checkpoint & Advisory Locks**                               | §6.2.4, Task 6.4.3     | `apps/worker/src/modules/graph/services/graph-extraction.service.ts`  | `graph-atomic-fencing.test.ts` (10 tests)             | **PASS** |
+| **Heartbeat CAS & Sweep Recovery**                                   | §6.3.5, Task 6.4.1     | `apps/worker/src/services/dispatch-recovery.service.ts`               | `dispatch-recovery.service.test.ts` (36 tests)        | **PASS** |
 
 ---
 
 ## 3. Files Created and Modified
 
 ### Created Files
+
 1. `apps/worker/src/modules/graph/errors/extraction-error.classifier.ts`:
    - Declares `ExtractionTransientError` (`code = 'EXTRACTION_TRANSIENT'`) and `ExtractionPermanentError` (`code = 'EXTRACTION_PERMANENT'`).
    - Implements `ExtractionErrorClassifier.classify(err: unknown): ExtractionErrorType`.
@@ -68,6 +71,7 @@ In Phase 6.4.4, we implemented:
    - Authoritative task implementation report.
 
 ### Modified Files
+
 1. `packages/shared/src/types.ts`:
    - Exported `GraphTerminalStatus = 'COMPLETED' | 'PARTIAL' | 'FAILED'`.
    - Exported `GraphFinalizationReceipt` interface.
@@ -106,6 +110,7 @@ receipts.      Status -> QUEUED.          continue.      retries attempt.
 ```
 
 ### Categorization Logic:
+
 1. **`FENCED`**:
    - `err instanceof ExtractionFencedError || err?.name === 'ExtractionFencedError' || err?.code === 'EXTRACTION_FENCED'`
    - Action: Set `isFenced = true`, cease writes, break chunk loop.
@@ -131,6 +136,7 @@ receipts.      Status -> QUEUED.          continue.      retries attempt.
 ## 5. BullMQ Retry Configuration & Exact Delays
 
 Configured in `packages/shared/src/types.ts` (`GRAPH_QUEUE_DEFAULT_JOB_OPTIONS`):
+
 ```typescript
 export const GRAPH_QUEUE_DEFAULT_JOB_OPTIONS = {
   attempts: 3,
@@ -144,6 +150,7 @@ export const GRAPH_QUEUE_DEFAULT_JOB_OPTIONS = {
 ```
 
 ### Delay Formula Verification:
+
 From BullMQ 6.6.0 backoff engine (`classes/backoffs.js` line 40):
 $$\text{delay} = \text{Math.round}(\text{Math.pow}(2, \text{attemptsMade} - 1) \times \text{delay})$$
 
@@ -161,8 +168,17 @@ Verified mathematically and configurationally in `extraction-status-precedence.t
 Implemented in `apps/worker/src/modules/graph/services/status-precedence.ts`:
 
 ```typescript
-export function determineTerminalStatusAndReceipt(input: FinalizationDecisionInput): FinalizationDecisionResult {
-  const { totalChunks, succeededChunksCount, failedChunksCount, extractionRunId, chunkManifestHash, completedAt } = input;
+export function determineTerminalStatusAndReceipt(
+  input: FinalizationDecisionInput,
+): FinalizationDecisionResult {
+  const {
+    totalChunks,
+    succeededChunksCount,
+    failedChunksCount,
+    extractionRunId,
+    chunkManifestHash,
+    completedAt,
+  } = input;
 
   let terminalStatus: GraphTerminalStatus;
 
@@ -171,9 +187,9 @@ export function determineTerminalStatusAndReceipt(input: FinalizationDecisionInp
   } else if (succeededChunksCount === totalChunks && failedChunksCount === 0) {
     terminalStatus = 'COMPLETED'; // Case 1: Valid even with 0 extracted relations
   } else if (succeededChunksCount > 0 && failedChunksCount > 0) {
-    terminalStatus = 'PARTIAL';   // Case 2 & 3: Preserves valid triples in graph
+    terminalStatus = 'PARTIAL'; // Case 2 & 3: Preserves valid triples in graph
   } else if (succeededChunksCount === 0 && failedChunksCount === totalChunks) {
-    terminalStatus = 'FAILED';    // Case 4a: Terminal receipt committed, 0 retries burned
+    terminalStatus = 'FAILED'; // Case 4a: Terminal receipt committed, 0 retries burned
   } else {
     terminalStatus = succeededChunksCount > 0 ? 'PARTIAL' : 'FAILED';
   }
@@ -190,7 +206,9 @@ export function determineTerminalStatusAndReceipt(input: FinalizationDecisionInp
   };
 
   if (!validateFinalizationReceipt(receipt, extractionRunId, chunkManifestHash, totalChunks)) {
-    throw new Error(`Internal Error: Generated finalization receipt violated strengthened receipt invariants`);
+    throw new Error(
+      `Internal Error: Generated finalization receipt violated strengthened receipt invariants`,
+    );
   }
 
   return { terminalStatus, receipt };
@@ -202,6 +220,7 @@ export function determineTerminalStatusAndReceipt(input: FinalizationDecisionInp
 ## 7. Explicit Resolution of Audit Finding D3 Against Blueprint v4.5.6
 
 Audit finding D3 raised the critical distinction between five distributed states:
+
 1. **Permanent Extraction Failure (Case 4a)**:
    - **Condition**: $S = 0, F = N$ ($100\%$ of chunks fail schema validation or contain unparseable binary content).
    - **PostgreSQL State**: `graphStatus = 'FAILED'`, durable `GraphFinalizationReceipt` persisted in `metadata.graphFinalizationReceipt`.
@@ -264,10 +283,18 @@ export function validateFinalizationReceipt(
 
   // 4. Non-negative integer checks
   if (
-    typeof chunkCount !== 'number' || !Number.isInteger(chunkCount) || chunkCount < 0 ||
-    typeof processedChunksCount !== 'number' || !Number.isInteger(processedChunksCount) || processedChunksCount < 0 ||
-    typeof succeededChunksCount !== 'number' || !Number.isInteger(succeededChunksCount) || succeededChunksCount < 0 ||
-    typeof failedChunksCount !== 'number' || !Number.isInteger(failedChunksCount) || failedChunksCount < 0
+    typeof chunkCount !== 'number' ||
+    !Number.isInteger(chunkCount) ||
+    chunkCount < 0 ||
+    typeof processedChunksCount !== 'number' ||
+    !Number.isInteger(processedChunksCount) ||
+    processedChunksCount < 0 ||
+    typeof succeededChunksCount !== 'number' ||
+    !Number.isInteger(succeededChunksCount) ||
+    succeededChunksCount < 0 ||
+    typeof failedChunksCount !== 'number' ||
+    !Number.isInteger(failedChunksCount) ||
+    failedChunksCount < 0
   ) {
     return false;
   }
@@ -295,6 +322,7 @@ export function validateFinalizationReceipt(
 ## 9. Fencing and Ownership Preservation
 
 Every protection established in earlier phases is maintained:
+
 - **Phase 6.4.1 (Heartbeat Freshness CAS)**:
   `dispatch-recovery.service.ts` CAS predicates (`metadata.graphHeartbeatAt` staleness re-evaluation in candidate queries and post-commit allocations) remain untouched. All 36 tests pass.
 - **Phase 6.4.2 (Graceful Worker Shutdown)**:
@@ -307,25 +335,27 @@ Every protection established in earlier phases is maintained:
 ## 10. Comprehensive Test Results
 
 ### Worker Test Suite (`pnpm vitest run apps/worker`)
+
 - **Test Files**: **11 passed (100%)**
 - **Total Tests**: **127 passed (100%)**
 - **Test Duration**: 13.44s
 
-| Test Suite File | Tests Passed | Test Invariants Covered |
-| :--- | :---: | :--- |
-| `extraction-error.classifier.test.ts` | **16 / 16** | 429, timeouts, ECONNRESET, 5xx, deadlocks (`40P01`), Zod, JSON, Fenced, Deferred |
-| `extraction-status-precedence.test.ts` | **17 / 17** | TC-01 to TC-08 (All-success, zero relations, partial, permanent fail, transient 429, AC-24, fenced, retry delays) |
-| `graph-worker-shutdown.test.ts` | **15 / 15** | Cooperative abort, dual-lease release, moveToWait, pendingDispatch fallback, heartbeat renewal |
-| `graph-atomic-fencing.test.ts` | **10 / 10** | Document row lock `FOR NO KEY UPDATE`, ascending advisory locks, rollback atomicity, manifest hash mismatch |
-| `dispatch-recovery.service.test.ts` | **36 / 36** | Heartbeat staleness CAS, ceiling 5, presence sweep, pending intent recovery, leader election |
-| `pipeline-claim-intent.test.ts` | **3 / 3** | Ingestion pipeline claim-and-intent protocol |
-| `chunker.test.ts` | **6 / 6** | Document chunking and token counting |
-| `embeddings.test.ts` | **6 / 6** | Embedding generation and dimension checks |
-| `extractors.test.ts` | **10 / 10** | PDF, DOCX, TXT document extractors |
-| `text.normalizer.test.ts` | **7 / 7** | Text normalization utilities |
-| `worker.test.ts` | **1 / 1** | WorkerService lifecycle initialize/shutdown |
+| Test Suite File                        | Tests Passed | Test Invariants Covered                                                                                           |
+| :------------------------------------- | :----------: | :---------------------------------------------------------------------------------------------------------------- |
+| `extraction-error.classifier.test.ts`  | **16 / 16**  | 429, timeouts, ECONNRESET, 5xx, deadlocks (`40P01`), Zod, JSON, Fenced, Deferred                                  |
+| `extraction-status-precedence.test.ts` | **17 / 17**  | TC-01 to TC-08 (All-success, zero relations, partial, permanent fail, transient 429, AC-24, fenced, retry delays) |
+| `graph-worker-shutdown.test.ts`        | **15 / 15**  | Cooperative abort, dual-lease release, moveToWait, pendingDispatch fallback, heartbeat renewal                    |
+| `graph-atomic-fencing.test.ts`         | **10 / 10**  | Document row lock `FOR NO KEY UPDATE`, ascending advisory locks, rollback atomicity, manifest hash mismatch       |
+| `dispatch-recovery.service.test.ts`    | **36 / 36**  | Heartbeat staleness CAS, ceiling 5, presence sweep, pending intent recovery, leader election                      |
+| `pipeline-claim-intent.test.ts`        |  **3 / 3**   | Ingestion pipeline claim-and-intent protocol                                                                      |
+| `chunker.test.ts`                      |  **6 / 6**   | Document chunking and token counting                                                                              |
+| `embeddings.test.ts`                   |  **6 / 6**   | Embedding generation and dimension checks                                                                         |
+| `extractors.test.ts`                   | **10 / 10**  | PDF, DOCX, TXT document extractors                                                                                |
+| `text.normalizer.test.ts`              |  **7 / 7**   | Text normalization utilities                                                                                      |
+| `worker.test.ts`                       |  **1 / 1**   | WorkerService lifecycle initialize/shutdown                                                                       |
 
 ### Monorepo Test Suite (`pnpm test`)
+
 - **Total Test Files**: 48
 - **Passed Files**: 36 passed
 - **Total Tests Passed**: **336 passed** (up from 303 baseline; +33 tests)

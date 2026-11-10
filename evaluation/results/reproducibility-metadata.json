@@ -1,0 +1,35 @@
+{
+  "evaluationRunId": "mv_eval_run_1794231505889",
+  "timestamp": "2026-11-09T13:38:25.889Z",
+  "gitCommitHash": "a5697e4cec094c0a0af0575a5c16d53311fc7e1d",
+  "nodeVersion": "v22.20.0",
+  "osPlatform": "win32",
+  "osRelease": "10.0.26300",
+  "cpuArch": "x64",
+  "cpuCount": 4,
+  "totalMemoryGb": 7.7,
+  "database": {
+    "url": "postgresql://mindvault:***@localhost:5433/mindvault_eval?schema=public&connection_limit=10&pool_timeout=30",
+    "databaseName": "mindvault_eval",
+    "pgvectorVersion": "0.8.7",
+    "hnswIndexPresent": true,
+    "ginIndexPresent": true
+  },
+  "models": {
+    "embedding": {
+      "provider": "ollama",
+      "model": "nomic-embed-text",
+      "digest": "0a109f422b47e3a30ba2b10eca18548e944e8a23073ee3f3e947efcf3c45e59f",
+      "dimension": 768
+    },
+    "generation": {
+      "provider": "gemini",
+      "model": "gemini-3.5-flash",
+      "sdk": "@google/genai@2.32.0",
+      "digest": "gemini-api-official-sdk-v2.32.0",
+      "temperature": 0.1,
+      "maxTokens": 1024
+    }
+  },
+  "totalDurationSeconds": 141
+}
