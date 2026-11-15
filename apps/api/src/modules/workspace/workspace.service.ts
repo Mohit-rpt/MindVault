@@ -99,6 +99,12 @@ export class WorkspaceService {
 
   async deleteWorkspace(workspaceId: string): Promise<void> {
     await dbService.deleteWorkspace(workspaceId);
+    try {
+      const { workspaceQueueService } = await import('./workspace-queue.service.js');
+      await workspaceQueueService.cleanWorkspaceQueues(workspaceId);
+    } catch {
+      // Non-blocking queue cleanup
+    }
   }
 }
 

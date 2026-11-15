@@ -22,6 +22,7 @@
 
 import fs from 'node:fs';
 import net from 'node:net';
+import tls from 'node:tls';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PrismaClient } from '@prisma/client';
@@ -97,11 +98,17 @@ export async function pingRedisServer(
     let host = 'localhost';
     let port = 6379;
     let password: string | null = null;
+    let username: string | null = null;
+    let isTls = false;
 
     try {
       const parsed = new URL(redisUrl);
       host = parsed.hostname || 'localhost';
       port = parseInt(parsed.port, 10) || 6379;
+      isTls = parsed.protocol === 'rediss:';
+      if (parsed.username) {
+        username = decodeURIComponent(parsed.username);
+      }
       if (parsed.password) {
         password = decodeURIComponent(parsed.password);
       }
@@ -110,8 +117,11 @@ export async function pingRedisServer(
     }
 
     const start = performance.now();
-    const socket = net.createConnection({ host, port });
     let isSettled = false;
+
+    const socket = isTls
+      ? tls.connect({ host, port, servername: host })
+      : net.createConnection({ host, port });
 
     socket.setTimeout(timeoutMs);
 
@@ -123,13 +133,23 @@ export async function pingRedisServer(
       }
     };
 
-    socket.on('connect', () => {
+    const onConnect = () => {
       if (password) {
-        socket.write(`AUTH ${password}\r\nPING\r\n`);
+        if (username) {
+          socket.write(`AUTH ${username} ${password}\r\nPING\r\n`);
+        } else {
+          socket.write(`AUTH ${password}\r\nPING\r\n`);
+        }
       } else {
         socket.write('PING\r\n');
       }
-    });
+    };
+
+    if (isTls) {
+      (socket as tls.TLSSocket).on('secureConnect', onConnect);
+    } else {
+      socket.on('connect', onConnect);
+    }
 
     socket.on('data', (data) => {
       const response = data.toString();
@@ -137,7 +157,7 @@ export async function pingRedisServer(
         const latencyMs = Math.round(performance.now() - start);
         finish({ success: true, latencyMs });
       } else if (response.includes('-ERR') || response.includes('-NOAUTH')) {
-        finish({ success: false, error: response.trim() });
+        finish({ success: false, error: response.trim().replace(/(AUTH\s+(?:\S+\s+)?)\S+/gi, '$1[REDACTED]') });
       } else {
         finish({ success: true, latencyMs: Math.round(performance.now() - start) });
       }
@@ -148,7 +168,7 @@ export async function pingRedisServer(
     });
 
     socket.on('error', (err: Error) => {
-      finish({ success: false, error: err.message });
+      finish({ success: false, error: err.message.replace(/(rediss?:\/\/[^:]+:)[^@]+(@[^\s"']+)/gi, '$1[REDACTED]$2') });
     });
   });
 }

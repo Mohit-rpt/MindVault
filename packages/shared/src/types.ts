@@ -277,6 +277,8 @@ export interface ProcessDocumentJobPayload {
   documentId: string;
   workspaceId: string;
   userId: string;
+  capability?: 'local' | 'cloud';
+  requiresLocal?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -774,6 +776,8 @@ export interface GraphExtractionJobPayload {
   chunkManifestHash?: string;
   chunkId?: string;
   forceReextract?: boolean;
+  capability?: 'local' | 'cloud';
+  requiresLocal?: boolean;
 }
 
 export interface ExtractionValidationFailures {
@@ -986,8 +990,69 @@ export function formatExtractionJobId(documentId: string, extractionRunId: strin
   return `graph_${documentId}_${extractionRunId}`;
 }
 
+export const DOCUMENT_PROCESSING_QUEUE_NAME = 'document-processing';
 export const GRAPH_EXTRACTION_QUEUE_NAME = 'graph-extraction';
 export const GRAPH_EXTRACTION_JOB_NAME = 'extract-graph';
+
+export type WorkerCapability = 'local' | 'cloud' | 'all';
+
+/**
+ * Resolves workspace-partitioned BullMQ queue name for document ingestion (§ARC-01, §ARC-02).
+ * Examples:
+ * - 'document-processing:ws-uuid-1234:local'
+ * - 'document-processing:ws-uuid-1234:cloud'
+ * - 'document-processing:ws-uuid-1234' (fallback/legacy)
+ * - 'document-processing' (global fallback)
+ */
+export function getDocumentQueueName(
+  workspaceId?: string | null,
+  capability?: 'local' | 'cloud',
+): string {
+  if (workspaceId && capability) {
+    return `${DOCUMENT_PROCESSING_QUEUE_NAME}:${workspaceId}:${capability}`;
+  }
+  if (workspaceId) {
+    return `${DOCUMENT_PROCESSING_QUEUE_NAME}:${workspaceId}`;
+  }
+  if (capability) {
+    return `${DOCUMENT_PROCESSING_QUEUE_NAME}:${capability}`;
+  }
+  return DOCUMENT_PROCESSING_QUEUE_NAME;
+}
+
+/**
+ * Resolves workspace-partitioned BullMQ queue name for knowledge graph extraction (§ARC-01, §ARC-02).
+ * Examples:
+ * - 'graph-extraction:ws-uuid-1234:local'
+ * - 'graph-extraction:ws-uuid-1234:cloud'
+ * - 'graph-extraction:ws-uuid-1234' (fallback/legacy)
+ * - 'graph-extraction' (global fallback)
+ */
+export function getGraphQueueName(
+  workspaceId?: string | null,
+  capability?: 'local' | 'cloud',
+): string {
+  if (workspaceId && capability) {
+    return `${GRAPH_EXTRACTION_QUEUE_NAME}:${workspaceId}:${capability}`;
+  }
+  if (workspaceId) {
+    return `${GRAPH_EXTRACTION_QUEUE_NAME}:${workspaceId}`;
+  }
+  if (capability) {
+    return `${GRAPH_EXTRACTION_QUEUE_NAME}:${capability}`;
+  }
+  return GRAPH_EXTRACTION_QUEUE_NAME;
+}
+
+/**
+ * Formats a queue name for BullMQ compatibility.
+ * BullMQ disallows colons (':') in queue names because colons are reserved Redis key separators.
+ * This helper converts ':' to '--' while preserving full queue identity.
+ */
+export function toBullQueueName(queueName: string): string {
+  if (!queueName) return queueName;
+  return queueName.replace(/:/g, '--');
+}
 
 export const GRAPH_QUEUE_DEFAULT_JOB_OPTIONS = {
   attempts: 3,
