@@ -1,7 +1,8 @@
 import { createApp } from './app.js';
 import { env } from './config/env.js';
-
 import { ConversationRepository } from './modules/conversations/repositories/conversation.repository.js';
+import { documentQueue } from './modules/document/document.queue.js';
+import { graphExtractionQueue } from './modules/graph/queue/graph-extraction.queue.js';
 
 const app = createApp();
 
@@ -25,11 +26,22 @@ const server = app.listen(env.PORT, () => {
 // Graceful shutdown handling
 let isShuttingDown = false;
 
-function shutdown(signal: string): void {
+async function shutdown(signal: string): Promise<void> {
   if (isShuttingDown) return;
   isShuttingDown = true;
 
   console.log(`\n🛑 Received ${signal}. Starting graceful shutdown...`);
+
+  // Close BullMQ producer queues
+  try {
+    await Promise.allSettled([
+      documentQueue.close(),
+      graphExtractionQueue.close(),
+    ]);
+    console.log('✅ BullMQ producer queues closed.');
+  } catch (err) {
+    console.warn('⚠️ Error closing BullMQ queues during shutdown:', err);
+  }
 
   server.close((err) => {
     if (err) {
@@ -47,5 +59,5 @@ function shutdown(signal: string): void {
   }, 10000).unref();
 }
 
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
+process.on('SIGINT', () => void shutdown('SIGINT'));

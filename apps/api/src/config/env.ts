@@ -21,7 +21,27 @@ const envSchema = z.object({
     }),
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
   DATABASE_URL: z.string().optional(),
-  REDIS_URL: z.string().optional(),
+  REDIS_URL: z
+    .string()
+    .optional()
+    .transform((val) => {
+      if (!val && process.env.NODE_ENV !== 'production') {
+        return 'redis://localhost:6379';
+      }
+      return val || '';
+    })
+    .refine(
+      (val) => {
+        if (process.env.NODE_ENV === 'production') {
+          return !!val && val.startsWith('rediss://');
+        }
+        return true;
+      },
+      {
+        message:
+          'REDIS_URL is required in production and must start with rediss:// (native TLS)',
+      },
+    ),
 
   // Phase 1: Authentication & Security
   JWT_ACCESS_SECRET: z

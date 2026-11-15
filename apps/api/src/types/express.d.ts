@@ -18,6 +18,12 @@ declare global {
         name?: string;
         role?: WorkspaceRole;
       };
+      companionDevice?: {
+        id: string;
+        userId: string;
+        deviceName: string;
+        platform: string;
+      };
     }
   }
 }
