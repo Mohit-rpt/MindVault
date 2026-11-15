@@ -2,6 +2,9 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { prisma } from '../../../lib/prisma.js';
 import { PrismaClient } from '@prisma/client';
 
+// Extend timeout for integration tests that involve many DB operations
+// test.setTimeout removed; global timeout configured in vitest.config.ts
+
 /**
  * Helper to extract exact PostgreSQL SQLSTATE from Prisma error.
  * Prisma wraps PostgreSQL errors:
