@@ -23,14 +23,8 @@ import {
   type DocumentGraphExtractionResult,
   type ExtractionValidationFailures,
   type GraphChunkCheckpoint,
+  sanitizeErrorMessage,
 } from '@mindvault/shared';
-
-function sanitizeErrorMessage(msg?: string): string {
-  if (!msg) return '';
-  return msg
-    .replace(/bearer\s+[a-zA-Z0-9_\-.]+/gi, 'Bearer [REDACTED]')
-    .replace(/(?:password|secret|key|token)=[^&\s]+/gi, '$1=[REDACTED]');
-}
 
 export interface GraphExtractionServiceOptions {
   graphRepo?: IGraphRepository;

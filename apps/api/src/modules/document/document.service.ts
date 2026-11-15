@@ -123,14 +123,18 @@ export class DocumentService {
       metadata: {
         originalMimeType: params.mimeType,
         uploadedAt: new Date().toISOString(),
+        rawContentBase64: buffer.toString('base64'),
       },
     });
 
-    // 9. Coordinate BullMQ job enqueue
+    // 9. Coordinate BullMQ job enqueue with capability routing
+    const requiresLocal = (params as any).requiresLocal ?? true;
     await this.queue.enqueue({
       documentId: docRecord.id,
       workspaceId,
       userId: uploadedById,
+      capability: requiresLocal ? 'local' : 'cloud',
+      requiresLocal,
     });
 
     // 10. Update status to QUEUED
@@ -231,7 +235,17 @@ export class DocumentService {
       throw new AppError(404, 'DOCUMENT_NOT_FOUND', 'Document not found');
     }
 
-    const buffer = await this.storage.read(doc.storageKey);
+    let buffer: Buffer;
+    try {
+      buffer = await this.storage.read(doc.storageKey);
+    } catch (err: any) {
+      if ((doc.metadata as any)?.rawContentBase64) {
+        buffer = Buffer.from((doc.metadata as any).rawContentBase64, 'base64');
+      } else {
+        throw err;
+      }
+    }
+
     return {
       buffer,
       originalName: doc.originalName,

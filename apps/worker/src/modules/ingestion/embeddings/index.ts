@@ -28,6 +28,13 @@ export function createEmbeddingProvider(
   }
 
   const model = config.modelName || config.model;
+  const dimension = config.dimension || 768;
+
+  if (dimension !== 768) {
+    throw new Error(
+      `EmbeddingDimensionViolation (§MOD-01): MindVault pgvector schema strictly mandates 768 dimensions. Received unsupported dimension: ${dimension}.`,
+    );
+  }
 
   if (providerType === 'mock') {
     return new MockEmbeddingProvider(model || 'mock-embed-768', config.dimension || 768);

@@ -135,7 +135,7 @@ export class GraphHeartbeatManager {
       const rowsUpdated =
         this.leaseGeneration !== undefined
           ? await this.prisma.$executeRaw`
-            UPDATE "Document"
+            UPDATE "documents"
             SET metadata = jsonb_set(
               jsonb_set(
                 metadata,
@@ -153,7 +153,7 @@ export class GraphHeartbeatManager {
               AND (metadata->>'graphLeaseExpiresAt')::timestamptz > clock_timestamp();
           `
           : await this.prisma.$executeRaw`
-            UPDATE "Document"
+            UPDATE "documents"
             SET metadata = jsonb_set(
               jsonb_set(
                 metadata,

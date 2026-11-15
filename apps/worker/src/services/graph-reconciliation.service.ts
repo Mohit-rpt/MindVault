@@ -138,7 +138,7 @@ export class GraphReconciliationService {
         async (tx) => {
           // Step 0: Distributed Leader Election via Advisory Transaction Lock (10064, 1)
           const lockResult = await tx.$queryRaw<Array<{ acquired: boolean }>>`
-            SELECT pg_try_advisory_xact_lock(${RECONCILIATION_LOCK_CLASS_ID}, ${RECONCILIATION_LOCK_OBJ_ID}) AS acquired;
+            SELECT pg_try_advisory_xact_lock(${RECONCILIATION_LOCK_CLASS_ID}::integer, ${RECONCILIATION_LOCK_OBJ_ID}::integer) AS acquired;
           `;
 
           if (!lockResult[0]?.acquired) {
@@ -163,7 +163,7 @@ export class GraphReconciliationService {
               metadata->>'graphStatus' IN ('QUEUED', 'PROCESSING')
               OR metadata->'pendingDispatch' IS NOT NULL
             )
-            ORDER BY updated_at ASC
+            ORDER BY "updatedAt" ASC
             LIMIT ${BATCH_LIMIT};
           `;
 
@@ -330,7 +330,7 @@ export class GraphReconciliationService {
           metadata.pendingDispatch?.jobId || formatExtractionJobId(doc.id, extractionRunId);
         if (this.queue.getJob) {
           try {
-            const job = await this.queue.getJob(jobId);
+            const job = await this.queue.getJob(jobId, doc.workspaceId);
             if (job) {
               await job.remove().catch((e) => {
                 this.logger.warn(
@@ -375,7 +375,7 @@ export class GraphReconciliationService {
     let job: any = null;
     if (this.queue.getJob) {
       try {
-        job = await this.queue.getJob(jobId);
+        job = await this.queue.getJob(jobId, doc.workspaceId);
       } catch (e: any) {
         throw new Error(`Redis error checking job ${jobId}: ${e.message}`);
       }

@@ -18,10 +18,15 @@ import type {
 } from '@mindvault/shared';
 import {
   GRAPH_EXTRACTION_QUEUE_NAME,
+  GRAPH_QUEUE_DEFAULT_JOB_OPTIONS,
+  getGraphQueueName,
+  toBullQueueName,
   LUA_ACQUIRE_LEASE_SCRIPT,
   LUA_RELEASE_LEASE_SCRIPT,
   computeChunkManifestHash,
   validateFinalizationReceipt,
+  parseRedisUrl,
+  sanitizeErrorMessage,
 } from '@mindvault/shared';
 import {
   ExtractionErrorClassifier,
@@ -38,19 +43,19 @@ import { GraphHeartbeatManager } from '../services/graph-heartbeat.manager.js';
 import { Logger } from '../../../utils/logger.js';
 import { Redis } from 'ioredis';
 
-function sanitizeErrorMessage(msg?: string): string {
-  if (!msg) return '';
-  return msg
-    .replace(/bearer\s+[a-zA-Z0-9_\-.]+/gi, 'Bearer [REDACTED]')
-    .replace(/(?:password|secret|key|token)=[^&\s]+/gi, '$1=[REDACTED]');
-}
-
 export class GraphExtractionWorker {
   private readonly logger = new Logger('GraphExtractionWorker');
   private worker: Worker<GraphExtractionJobPayload> | null = null;
+  private workers: Worker<GraphExtractionJobPayload>[] = [];
   private isRunning = false;
   private isShuttingDown = false;
   private redisClient: Redis | null = null;
+  private workersByQueue: Map<string, Worker<GraphExtractionJobPayload>> = new Map();
+  private registeredWorkspaces: Set<string> = new Set();
+  private discoveryIntervalTimer: NodeJS.Timeout | null = null;
+  private consumerOptions: any = null;
+  private workerOptions: any = null;
+  private forceLiveBullMQ = false;
 
   // Track active jobs and their abort controllers for graceful cooperative shutdown
   private activeJobs = new Map<
@@ -58,57 +63,202 @@ export class GraphExtractionWorker {
     { abortController: AbortController; timeoutId?: NodeJS.Timeout }
   >();
 
-  constructor(private readonly service: GraphExtractionService = graphExtractionService) {}
+  constructor(
+    private readonly service: GraphExtractionService = graphExtractionService,
+    redisClient?: Redis,
+  ) {
+    if (redisClient) {
+      this.redisClient = redisClient;
+    }
+  }
 
-  public async start(): Promise<void> {
-    if (this.isRunning) return;
-    this.isRunning = true;
-    this.isShuttingDown = false;
+  public setRedisClient(client: Redis | null): void {
+    this.redisClient = client;
+  }
 
-    if (env.NODE_ENV === 'test') {
-      this.logger.info('GraphExtractionWorker initialized in test mode');
+  public getRegisteredWorkspaces(): string[] {
+    return [...this.registeredWorkspaces];
+  }
+
+  public getWorkers(): Worker<GraphExtractionJobPayload>[] {
+    return [...this.workers];
+  }
+
+  public async resolveWorkspaces(options?: { workspaceIds?: string[] }): Promise<string[]> {
+    if (options?.workspaceIds && options.workspaceIds.length > 0) {
+      return [...new Set(options.workspaceIds.map((id) => id.trim()).filter((id) => Boolean(id) && id !== 'undefined' && id !== 'null'))];
+    }
+    if (process.env.AUTHORIZED_WORKSPACE_IDS) {
+      const ids = process.env.AUTHORIZED_WORKSPACE_IDS.split(',')
+        .map((s) => s.trim())
+        .filter((id) => Boolean(id) && id !== 'undefined' && id !== 'null');
+      if (ids.length > 0) return [...new Set(ids)];
+    }
+    if (process.env.AUTHORIZED_WORKSPACE_ID) {
+      const single = process.env.AUTHORIZED_WORKSPACE_ID.trim();
+      if (single && single !== 'undefined' && single !== 'null') return [single];
+    }
+    if (env.WORKER_TYPE === 'cloud' || env.WORKER_TYPE === 'all') {
+      try {
+        const { prisma } = await import('../../../lib/prisma.js');
+        if (prisma.workspace?.findMany) {
+          const list = await prisma.workspace.findMany({ select: { id: true } });
+          return list.map((w: any) => w.id).filter((id: string) => Boolean(id));
+        }
+      } catch (err: any) {
+        this.logger.warn(`Could not discover workspaces for graph extraction: ${err.message}`);
+      }
+    }
+    return [];
+  }
+
+  public async registerWorkspace(workspaceId: string): Promise<void> {
+    if (!workspaceId || typeof workspaceId !== 'string') {
+      throw new Error('Workspace ID must be a non-empty string (cannot be empty or undefined)');
+    }
+    const trimmed = workspaceId.trim();
+    if (!trimmed || trimmed === 'undefined' || trimmed === 'null') {
+      throw new Error('Workspace ID must be a non-empty string (cannot be empty or undefined)');
+    }
+    if (this.registeredWorkspaces.has(trimmed)) {
+      return; // Already registered (idempotency guarantee)
+    }
+
+    this.registeredWorkspaces.add(trimmed);
+
+    if (env.NODE_ENV === 'test' && !this.forceLiveBullMQ) {
       return;
     }
 
-    try {
-      this.redisClient = new Redis(env.REDIS_URL, {
-        maxRetriesPerRequest: null,
-      });
+    const workerType = (process.env.WORKER_TYPE as any) || env.WORKER_TYPE;
+    const queueNames: string[] = [];
+    if (workerType === 'local') {
+      queueNames.push(getGraphQueueName(trimmed, 'local'));
+    } else if (workerType === 'cloud') {
+      queueNames.push(getGraphQueueName(trimmed, 'cloud'));
+    } else {
+      queueNames.push(getGraphQueueName(trimmed, 'local'));
+      queueNames.push(getGraphQueueName(trimmed, 'cloud'));
+      queueNames.push(getGraphQueueName(trimmed));
+    }
 
-      this.worker = new Worker<GraphExtractionJobPayload>(
-        GRAPH_EXTRACTION_QUEUE_NAME,
-        async (job: Job<GraphExtractionJobPayload>, token?: string) => {
-          await this.processJob(job, token);
-        },
-        {
-          concurrency: env.WORKER_CONCURRENCY,
-          connection: {
-            url: env.REDIS_URL,
-            maxRetriesPerRequest: null,
-          },
-        },
-      );
+    const processor = async (job: Job<GraphExtractionJobPayload>, token?: string) => {
+      await this.processJob(job, token);
+    };
 
-      this.worker.on('completed', (job: Job) => {
-        this.logger.info(`Job ${job.id} completed successfully`);
-      });
+    for (const qName of queueNames) {
+      if (this.workersByQueue.has(qName)) continue;
+      const safeBullName = toBullQueueName(qName);
+      try {
+        const w = new Worker<GraphExtractionJobPayload>(
+          safeBullName,
+          processor,
+          this.workerOptions,
+        );
+        w.on('completed', (job: Job) => {
+          this.logger.info(`Job ${job.id} completed successfully on queue "${qName}"`);
+        });
+        w.on('failed', (job: Job | undefined, err: Error) => {
+          if (err instanceof WaitingError || err.name === 'WaitingError') {
+            this.logger.info(`Job ${job?.id} cleanly deferred to wait queue`);
+            return;
+          }
+          this.logger.error(`Job ${job?.id} failed on queue "${qName}": ${sanitizeErrorMessage(err.message)}`);
+        });
+        w.on('error', (err: Error) => {
+          this.logger.warn(`BullMQ graph worker connection error on queue "${qName}": ${sanitizeErrorMessage(err.message)}`);
+        });
 
-      this.worker.on('failed', (job: Job | undefined, err: Error) => {
-        if (err instanceof WaitingError || err.name === 'WaitingError') {
-          this.logger.info(`Job ${job?.id} cleanly deferred to wait queue`);
-          return;
+        this.workersByQueue.set(qName, w);
+        this.workers.push(w);
+        this.logger.info(`GraphExtractionWorker actively listening on queue "${qName}" (BullMQ: "${safeBullName}")`);
+      } catch (err: any) {
+        this.logger.warn(`Could not register graph worker for queue "${qName}": ${sanitizeErrorMessage(err.message)}`);
+      }
+    }
+
+    this.worker = this.workers[0] || null;
+  }
+
+  public async unregisterWorkspace(workspaceId: string): Promise<void> {
+    if (!workspaceId) return;
+    const trimmed = workspaceId.trim();
+    if (!this.registeredWorkspaces.has(trimmed)) return;
+
+    const workerType = env.WORKER_TYPE;
+    const queueNames = [
+      getGraphQueueName(trimmed, 'local'),
+      getGraphQueueName(trimmed, 'cloud'),
+      getGraphQueueName(trimmed),
+    ];
+
+    for (const qName of queueNames) {
+      const w = this.workersByQueue.get(qName);
+      if (w) {
+        try {
+          await w.pause(true);
+          await w.close(false);
+        } catch (err: any) {
+          this.logger.warn(`Error closing graph worker for queue "${qName}": ${err.message}`);
         }
-        this.logger.error(`Job ${job?.id} failed: ${err.message}`);
-      });
+        this.workersByQueue.delete(qName);
+        this.workers = this.workers.filter((worker) => worker !== w);
+      }
+    }
 
-      this.worker.on('error', (err: Error) => {
-        this.logger.warn(`BullMQ graph worker connection error: ${err.message}`);
-      });
+    this.registeredWorkspaces.delete(trimmed);
+    this.worker = this.workers[0] || null;
+    this.logger.info(`Unregistered graph workspace "${trimmed}" queues cleanly`);
+  }
 
-      this.logger.info(`GraphExtractionWorker listening on queue "${GRAPH_EXTRACTION_QUEUE_NAME}"`);
+  private async discoverWorkspaces(): Promise<void> {
+    if (!this.isRunning || this.isShuttingDown) return;
+    try {
+      const { prisma } = await import('../../../lib/prisma.js');
+      if (prisma.workspace?.findMany) {
+        const workspaces = await prisma.workspace.findMany({ select: { id: true } });
+        for (const w of workspaces) {
+          if (!this.registeredWorkspaces.has(w.id)) {
+            await this.registerWorkspace(w.id);
+          }
+        }
+      }
+    } catch {
+      // Non-blocking discovery
+    }
+  }
+
+  public async start(options?: { forceLiveBullMQ?: boolean; workspaceIds?: string[] }): Promise<void> {
+    if (this.isRunning) return;
+    this.isRunning = true;
+    this.isShuttingDown = false;
+    this.forceLiveBullMQ = !!options?.forceLiveBullMQ;
+
+    try {
+      const redisUrl = process.env.REDIS_URL || env.REDIS_URL;
+      if (!this.redisClient) {
+        const leaseOptions = parseRedisUrl(redisUrl, 'lease');
+        this.redisClient = new Redis(leaseOptions as any);
+      }
+
+      const consumerOptions = parseRedisUrl(redisUrl, 'consumer');
+      this.consumerOptions = consumerOptions;
+      this.workerOptions = {
+        concurrency: env.WORKER_CONCURRENCY,
+        connection: consumerOptions as any,
+      };
+
+      const targetWorkspaces = await this.resolveWorkspaces(options);
+      for (const wsId of targetWorkspaces) {
+        await this.registerWorkspace(wsId);
+      }
+
+      if ((env.WORKER_TYPE === 'cloud' || env.WORKER_TYPE === 'all') && env.NODE_ENV !== 'test') {
+        this.discoveryIntervalTimer = setInterval(() => void this.discoverWorkspaces(), 30000);
+      }
     } catch (err: any) {
       this.logger.warn(
-        `Could not connect GraphExtractionWorker to Redis: ${err.message}. Running in standby.`,
+        `Could not connect GraphExtractionWorker to Redis: ${sanitizeErrorMessage(err.message)}. Running in standby.`,
       );
     }
   }
@@ -124,30 +274,45 @@ export class GraphExtractionWorker {
     this.logger.info('🛑 Stopping GraphExtractionWorker, initiating cooperative deferral...');
     this.isShuttingDown = true;
 
-    if (this.worker) {
-      try {
-        await this.worker.pause(true);
-        this.logger.info('Paused GraphExtractionWorker polling');
-      } catch (e: any) {
-        this.logger.warn(`Error pausing graph worker: ${e.message}`);
-      }
+    if (this.discoveryIntervalTimer) {
+      clearInterval(this.discoveryIntervalTimer);
+      this.discoveryIntervalTimer = null;
+    }
 
-      // Trigger cooperative 8s cancellation budget on all active in-flight chunks
-      for (const [jobId, entry] of this.activeJobs.entries()) {
-        this.logger.info(`Arming 8-second chunk completion budget for active job ${jobId}`);
-        entry.timeoutId = setTimeout(() => {
-          this.logger.warn(
-            `Chunk budget expired (8s) for job ${jobId}; aborting in-flight LLM call`,
-          );
-          entry.abortController.abort();
-        }, 8000);
+    const allWorkers = this.workers.length > 0 ? this.workers : (this.worker ? [this.worker] : []);
+    if (allWorkers.length > 0) {
+      for (const w of allWorkers) {
+        try {
+          await w.pause(true);
+        } catch (e: any) {
+          this.logger.warn(`Error pausing graph worker: ${e.message}`);
+        }
       }
+      this.logger.info('Paused GraphExtractionWorker polling');
+    }
 
-      try {
-        await this.worker.close(false);
-      } catch (e: any) {
-        this.logger.warn(`Error closing BullMQ graph worker: ${e.message}`);
+    // Trigger cooperative 8s cancellation budget on all active in-flight chunks
+    for (const [jobId, entry] of this.activeJobs.entries()) {
+      this.logger.info(`Arming 8-second chunk completion budget for active job ${jobId}`);
+      entry.timeoutId = setTimeout(() => {
+        this.logger.warn(
+          `Chunk budget expired (8s) for job ${jobId}; aborting in-flight LLM call`,
+        );
+        entry.abortController.abort();
+      }, 8000);
+    }
+
+    if (allWorkers.length > 0) {
+      for (const w of allWorkers) {
+        try {
+          await w.close(false);
+        } catch (e: any) {
+          this.logger.warn(`Error closing BullMQ graph worker: ${e.message}`);
+        }
       }
+      this.workers = [];
+      this.workersByQueue.clear();
+      this.registeredWorkspaces.clear();
       this.worker = null;
     }
 
@@ -172,14 +337,124 @@ export class GraphExtractionWorker {
    * Processes a graph extraction job with dual-lease ownership, single-flight heartbeat renewal,
    * chunk-boundary atomicity, and race-safe shutdown deferral.
    */
-  public async processJob(job: Job<GraphExtractionJobPayload>, token?: string): Promise<any> {
+  public async processJob(
+    job: Job<GraphExtractionJobPayload>,
+    tokenOrOptions?: string | { rerouteQueueOverride?: any },
+  ): Promise<any> {
     const { documentId, workspaceId } = job.data;
+    const token = typeof tokenOrOptions === 'string' ? tokenOrOptions : undefined;
+    const options = typeof tokenOrOptions === 'object' ? tokenOrOptions : undefined;
     const workerToken = token || `worker_${job.id}_${Date.now()}`;
     const bullmqLockToken = token || (job as any).token;
 
     if (!documentId || !workspaceId) {
       this.logger.warn(`Invalid job ${job.id}: missing documentId or workspaceId`);
       return;
+    }
+
+    // Worker Capability Routing (§OPS-01)
+    const requiresLocal = (job.data as any).requiresLocal || job.data.capability === 'local';
+    if (process.env.WORKER_TYPE === 'cloud' && requiresLocal) {
+      const targetQueueName = getGraphQueueName(workspaceId, 'local');
+      this.logger.warn(
+        `Graph job ${job.id} requires local execution but was received by cloud worker. Re-routing safely to '${targetQueueName}'.`,
+      );
+      if (options?.rerouteQueueOverride) {
+        await options.rerouteQueueOverride.add(
+          job.name,
+          { ...job.data, capability: 'local', requiresLocal: true },
+          {
+            jobId: job.id,
+            ...GRAPH_QUEUE_DEFAULT_JOB_OPTIONS,
+          },
+        );
+        return { status: 'rerouted_to_local', targetWorkspaceId: workspaceId };
+      }
+      if (process.env.NODE_ENV === 'test' && !(options as any)?.forceReroute) {
+        return { status: 'skipped_local_required', targetWorkspaceId: workspaceId };
+      }
+      try {
+        const { Queue } = await import('bullmq');
+        const conn = parseRedisUrl(env.REDIS_URL, 'producer');
+        const targetQ = new Queue(toBullQueueName(targetQueueName), { connection: conn as any });
+        await targetQ.add(
+          job.name,
+          { ...job.data, capability: 'local', requiresLocal: true },
+          {
+            jobId: job.id,
+            ...GRAPH_QUEUE_DEFAULT_JOB_OPTIONS,
+          },
+        );
+        await targetQ.close();
+        return { status: 'rerouted_to_local', targetWorkspaceId: workspaceId };
+      } catch (err: any) {
+        this.logger.error(`Failed to reroute local-required graph job: ${err.message}`);
+        throw new Error(`Failed to reroute local-required graph job ${job.id}: ${err.message}`);
+      }
+    }
+
+    if (
+      process.env.WORKER_TYPE === 'local' &&
+      job.data.capability === 'cloud' &&
+      !(job.data as any).requiresLocal
+    ) {
+      const targetQueueName = getGraphQueueName(workspaceId, 'cloud');
+      this.logger.warn(
+        `Graph job ${job.id} has cloud capability but was received by local worker. Re-routing safely to '${targetQueueName}'.`,
+      );
+      if (options?.rerouteQueueOverride) {
+        await options.rerouteQueueOverride.add(job.name, job.data, {
+          jobId: job.id,
+          ...GRAPH_QUEUE_DEFAULT_JOB_OPTIONS,
+        });
+        return { status: 'rerouted_to_cloud', targetWorkspaceId: workspaceId };
+      }
+      if (process.env.NODE_ENV === 'test' && !(options as any)?.forceReroute) {
+        return { status: 'skipped_cloud_required', targetWorkspaceId: workspaceId };
+      }
+      try {
+        const { Queue } = await import('bullmq');
+        const conn = parseRedisUrl(env.REDIS_URL, 'producer');
+        const targetQ = new Queue(toBullQueueName(targetQueueName), { connection: conn as any });
+        await targetQ.add(job.name, job.data, {
+          jobId: job.id,
+          ...GRAPH_QUEUE_DEFAULT_JOB_OPTIONS,
+        });
+        await targetQ.close();
+        return { status: 'rerouted_to_cloud', targetWorkspaceId: workspaceId };
+      } catch (err: any) {
+        this.logger.error(`Failed to reroute cloud graph job: ${err.message}`);
+        throw new Error(`Failed to reroute cloud graph job ${job.id}: ${err.message}`);
+      }
+    }
+
+    // Tenant Isolation Boundary Check (§ARC-01)
+    const authorizedWorkspaceId = process.env.AUTHORIZED_WORKSPACE_ID;
+    if (authorizedWorkspaceId && authorizedWorkspaceId !== workspaceId) {
+      const capability = requiresLocal ? 'local' : job.data.capability || 'local';
+      const targetQueueName = getGraphQueueName(workspaceId, capability);
+      this.logger.warn(
+        `Graph job for workspace ${workspaceId} was received by worker authorized only for ${authorizedWorkspaceId}. Re-routing safely to '${targetQueueName}'.`,
+      );
+      try {
+        let targetQ = options?.rerouteQueueOverride;
+        if (!targetQ) {
+          const { Queue } = await import('bullmq');
+          const conn = parseRedisUrl(env.REDIS_URL, 'producer');
+          targetQ = new Queue(toBullQueueName(targetQueueName), { connection: conn as any });
+        }
+        await targetQ.add(job.name, job.data, {
+          jobId: job.id,
+          ...GRAPH_QUEUE_DEFAULT_JOB_OPTIONS,
+        });
+        if (!options?.rerouteQueueOverride) {
+          await targetQ.close();
+        }
+        return { status: 'rerouted', targetWorkspaceId: workspaceId };
+      } catch (err: any) {
+        this.logger.error(`Failed to reroute foreign graph job: ${err.message}`);
+        throw new Error(`Failed to reroute foreign graph job ${job.id}: ${err.message}`);
+      }
     }
 
     // Pre-flight document check (fast rejection for missing documents and mock-environment compatibility)
@@ -371,8 +646,13 @@ export class GraphExtractionWorker {
     const extractionRunId: string = entryResult.activeRunId || jobExtractionRunId;
     const metadata = entryResult.metadata;
 
-    // Ensure Redis client is available for lease management
-    const redis = this.redisClient || (job as any).queue?.client || new Redis(env.REDIS_URL);
+    // Ensure managed Redis client is available for lease management
+    const redis = this.redisClient || (job as any).queue?.client;
+    if (!redis) {
+      throw new ExtractionTransientError(
+        `Redis client unavailable for graph extraction lease coordination on document ${documentId}`,
+      );
+    }
     const redisKey = `mindvault:graph:lease:${documentId}`;
 
     try {
@@ -812,9 +1092,11 @@ export class GraphExtractionWorker {
             AND (metadata->>'graphLeaseGeneration')::bigint = ${currentGeneration}::bigint
             AND (metadata->>'graphLeaseExpiresAt')::timestamptz > clock_timestamp();
         `;
-        const redis = this.redisClient || (job as any).queue?.client || new Redis(env.REDIS_URL);
-        const redisKey = `mindvault:graph:lease:${documentId}`;
-        await this.releaseRedisLease(redis, redisKey, workerToken);
+        const redis = this.redisClient || (job as any).queue?.client;
+        if (redis) {
+          const redisKey = `mindvault:graph:lease:${documentId}`;
+          await this.releaseRedisLease(redis, redisKey, workerToken);
+        }
       } catch (releaseErr: any) {
         this.logger.warn(
           `Failure-safe conditional lease release failed for document ${documentId}: ${releaseErr.message}`,

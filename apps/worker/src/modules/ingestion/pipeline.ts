@@ -6,6 +6,7 @@ import type {
 import {
   computeChunkManifestHash,
   formatExtractionJobId,
+  getDocumentQueueName,
   type PendingDispatch,
 } from '@mindvault/shared';
 import crypto from 'node:crypto';
@@ -32,9 +33,125 @@ export class DocumentIngestionPipeline {
     private graphQueue?: IWorkerGraphQueue,
   ) {}
 
-  public async processDocument(payload: ProcessDocumentJobPayload): Promise<void> {
+  public async processDocument(
+    payload: ProcessDocumentJobPayload,
+    options?: { rerouteQueueOverride?: any },
+  ): Promise<{ status?: string; targetWorkspaceId?: string; error?: string } | void> {
     const { documentId, workspaceId } = payload;
     this.logger.info(`Starting ingestion for document ${documentId} in workspace ${workspaceId}`);
+
+    // Worker Capability Routing (§OPS-01)
+    const requiresLocal = (payload as any).requiresLocal || payload.capability === 'local';
+    if (process.env.WORKER_TYPE === 'cloud' && requiresLocal) {
+      const targetQueueName = getDocumentQueueName(workspaceId, 'local');
+      this.logger.warn(
+        `Job ${documentId} requires local execution but was received by cloud worker. Re-routing safely to '${targetQueueName}'.`,
+      );
+      if (options?.rerouteQueueOverride) {
+        await options.rerouteQueueOverride.add(
+          'process-document',
+          { ...payload, capability: 'local', requiresLocal: true },
+          {
+            jobId: `proc_${documentId}`,
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 1000 },
+          },
+        );
+        return { status: 'rerouted_to_local', targetWorkspaceId: workspaceId };
+      }
+      if (process.env.NODE_ENV === 'test' && !(options as any)?.forceReroute) {
+        return { status: 'skipped_local_required', targetWorkspaceId: workspaceId };
+      }
+      try {
+        const { Queue } = await import('bullmq');
+        const { parseRedisUrl, toBullQueueName } = await import('@mindvault/shared');
+        const conn = parseRedisUrl(process.env.REDIS_URL || '', 'producer');
+        const targetQ = new Queue(toBullQueueName(targetQueueName), { connection: conn as any });
+        await targetQ.add(
+          'process-document',
+          { ...payload, capability: 'local', requiresLocal: true },
+          {
+            jobId: `proc_${documentId}`,
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 1000 },
+          },
+        );
+        await targetQ.close();
+        return { status: 'rerouted_to_local', targetWorkspaceId: workspaceId };
+      } catch (err: any) {
+        this.logger.error(`Failed to reroute local-required job: ${err.message}`);
+        throw new Error(`Failed to reroute local-required job ${documentId}: ${err.message}`);
+      }
+    }
+
+    if (
+      process.env.WORKER_TYPE === 'local' &&
+      payload.capability === 'cloud' &&
+      !(payload as any).requiresLocal
+    ) {
+      const targetQueueName = getDocumentQueueName(workspaceId, 'cloud');
+      this.logger.warn(
+        `Job ${documentId} has cloud capability but was received by local worker. Re-routing safely to '${targetQueueName}'.`,
+      );
+      if (options?.rerouteQueueOverride) {
+        await options.rerouteQueueOverride.add('process-document', payload, {
+          jobId: `proc_${documentId}`,
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 1000 },
+        });
+        return { status: 'rerouted_to_cloud', targetWorkspaceId: workspaceId };
+      }
+      if (process.env.NODE_ENV === 'test' && !(options as any)?.forceReroute) {
+        return { status: 'skipped_cloud_required', targetWorkspaceId: workspaceId };
+      }
+      try {
+        const { Queue } = await import('bullmq');
+        const { parseRedisUrl, toBullQueueName } = await import('@mindvault/shared');
+        const conn = parseRedisUrl(process.env.REDIS_URL || '', 'producer');
+        const targetQ = new Queue(toBullQueueName(targetQueueName), { connection: conn as any });
+        await targetQ.add('process-document', payload, {
+          jobId: `proc_${documentId}`,
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 1000 },
+        });
+        await targetQ.close();
+        return { status: 'rerouted_to_cloud', targetWorkspaceId: workspaceId };
+      } catch (err: any) {
+        this.logger.error(`Failed to reroute cloud job: ${err.message}`);
+        throw new Error(`Failed to reroute cloud job ${documentId}: ${err.message}`);
+      }
+    }
+
+    // Tenant Isolation Boundary Check (§ARC-01)
+    const authorizedWorkspaceId = process.env.AUTHORIZED_WORKSPACE_ID;
+    if (authorizedWorkspaceId && authorizedWorkspaceId !== workspaceId) {
+      const capability = requiresLocal ? 'local' : payload.capability || 'cloud';
+      const targetQueueName = getDocumentQueueName(workspaceId, capability);
+      this.logger.warn(
+        `Job for workspace ${workspaceId} was received by worker authorized only for ${authorizedWorkspaceId}. Re-routing safely to '${targetQueueName}'.`,
+      );
+      try {
+        let targetQ = options?.rerouteQueueOverride;
+        if (!targetQ) {
+          const { Queue } = await import('bullmq');
+          const { parseRedisUrl, toBullQueueName } = await import('@mindvault/shared');
+          const conn = parseRedisUrl(process.env.REDIS_URL || '', 'producer');
+          targetQ = new Queue(toBullQueueName(targetQueueName), { connection: conn as any });
+        }
+        await targetQ.add('process-document', payload, {
+          jobId: `proc_${documentId}`,
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 1000 },
+        });
+        if (!options?.rerouteQueueOverride) {
+          await targetQ.close();
+        }
+        return { status: 'rerouted', targetWorkspaceId: workspaceId };
+      } catch (err: any) {
+        this.logger.error(`Failed to reroute foreign job: ${err.message}`);
+        throw new Error(`Failed to reroute foreign job ${documentId}: ${err.message}`);
+      }
+    }
 
     const doc = await this.db.findDocumentById(documentId);
     if (!doc) {
@@ -54,8 +171,22 @@ export class DocumentIngestionPipeline {
         metadata: { ...doc.metadata, processingStage: 'EXTRACTING' },
       });
 
-      // 2. Read raw file buffer from storage
-      const fileBuffer = await this.storage.read(doc.storageKey);
+      // 2. Read raw file buffer from storage (with cloud-to-local hybrid fallback)
+      let fileBuffer: Buffer;
+      if (await this.storage.exists(doc.storageKey)) {
+        fileBuffer = await this.storage.read(doc.storageKey);
+      } else if (doc.metadata?.rawContentBase64) {
+        // Hybrid cloud-to-local bridge:
+        // File was uploaded through cloud API; local Windows worker reconstructs from database payload
+        fileBuffer = Buffer.from(doc.metadata.rawContentBase64, 'base64');
+        try {
+          await this.storage.save(doc.storageKey, fileBuffer);
+        } catch {
+          // Non-blocking local filesystem caching
+        }
+      } else {
+        fileBuffer = await this.storage.read(doc.storageKey);
+      }
 
       // 3. Extract text
       const extraction = await extractDocument(fileBuffer, doc.extension, doc.mimeType);
@@ -160,8 +291,11 @@ export class DocumentIngestionPipeline {
         lastError: null,
       };
 
+      // Strip rawContentBase64 upon durable chunk & vector storage completion (§DAT-01)
+      const { rawContentBase64: _removedContent, ...cleanMetadata } = (doc.metadata as any) || {};
+
       const updatedMetadata = {
-        ...doc.metadata,
+        ...cleanMetadata,
         processingStage: 'COMPLETED',
         warnings: extraction.warnings,
         graphStatus: 'QUEUED',
@@ -190,11 +324,14 @@ export class DocumentIngestionPipeline {
       // 9. Asynchronous Knowledge Graph Extraction Handoff (Claim-and-Intent Protocol, outside DB Tx)
       if (this.graphQueue) {
         try {
+          const docCapability = requiresLocal ? 'local' : 'cloud';
           await this.graphQueue.enqueue({
             documentId,
             workspaceId,
             extractionRunId,
             chunkManifestHash,
+            capability: docCapability,
+            requiresLocal,
           });
 
           // Confirm dispatch in DB

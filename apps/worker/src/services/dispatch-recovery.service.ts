@@ -187,7 +187,7 @@ export class DispatchRecoveryService {
                 OR
                 (metadata->>'graphHeartbeatAt' IS NULL AND (metadata->'pendingDispatch'->>'enqueuedAt')::timestamptz < clock_timestamp() - INTERVAL '5 minutes')
               )
-            ORDER BY updated_at ASC
+            ORDER BY "updatedAt" ASC
             LIMIT 50;
           `;
         },
@@ -251,7 +251,7 @@ export class DispatchRecoveryService {
       let existingJob = null;
       try {
         if (typeof this.queue.getJob === 'function') {
-          existingJob = await this.queue.getJob(jobId);
+          existingJob = await this.queue.getJob(jobId, doc.workspaceId);
         }
       } catch (err: any) {
         this.logger.warn(
@@ -267,7 +267,7 @@ export class DispatchRecoveryService {
             metadata,
             '{pendingDispatch,enqueuedAt}',
             to_jsonb(NOW()::text)
-          ), updated_at = CURRENT_TIMESTAMP
+          ), "updatedAt" = CURRENT_TIMESTAMP
           WHERE id = ${doc.id}
             AND metadata->>'extractionRunId' = ${extractionRunId}
             AND metadata->>'graphStatus' IN ('QUEUED', 'PROCESSING')
@@ -302,7 +302,7 @@ export class DispatchRecoveryService {
               metadata,
               '{pendingDispatch,enqueuedAt}',
               to_jsonb(NOW()::text)
-            ), updated_at = CURRENT_TIMESTAMP
+            ), "updatedAt" = CURRENT_TIMESTAMP
             WHERE id = ${doc.id}
               AND metadata->>'extractionRunId' = ${extractionRunId}
               AND metadata->>'graphStatus' IN ('QUEUED', 'PROCESSING')
@@ -340,7 +340,7 @@ export class DispatchRecoveryService {
               ),
               '{pendingDispatch,lastError}',
               to_jsonb(${sanitizedErr}::text)
-            ), updated_at = CURRENT_TIMESTAMP
+            ), "updatedAt" = CURRENT_TIMESTAMP
             WHERE id = ${doc.id}
               AND metadata->>'extractionRunId' = ${extractionRunId}
               AND metadata->>'graphStatus' IN ('QUEUED', 'PROCESSING')
@@ -393,7 +393,7 @@ export class DispatchRecoveryService {
       let job = null;
       try {
         if (typeof this.queue.getJob === 'function') {
-          job = await this.queue.getJob(jobId);
+          job = await this.queue.getJob(jobId, doc.workspaceId);
         }
       } catch (err: any) {
         this.logger.warn(
@@ -451,7 +451,7 @@ export class DispatchRecoveryService {
               '{graphAttempts}', to_jsonb(${currentAttempts + 1}::int)
             ),
             '{pendingDispatch}', ${JSON.stringify(newPendingDispatch)}::jsonb
-          ), updated_at = CURRENT_TIMESTAMP
+          ), "updatedAt" = CURRENT_TIMESTAMP
           WHERE id = ${doc.id}
             AND metadata->>'extractionRunId' = ${extractionRunId}
             AND metadata->>'graphStatus' IN ('QUEUED', 'PROCESSING')
@@ -501,7 +501,7 @@ export class DispatchRecoveryService {
               metadata,
               '{pendingDispatch,enqueuedAt}',
               to_jsonb(NOW()::text)
-            ), updated_at = CURRENT_TIMESTAMP
+            ), "updatedAt" = CURRENT_TIMESTAMP
             WHERE id = ${doc.id} AND metadata->>'extractionRunId' = ${newRunId};
           `;
 
@@ -526,7 +526,7 @@ export class DispatchRecoveryService {
           SET metadata = jsonb_set(
             jsonb_set(metadata, '{graphStatus}', to_jsonb('FAILED_RETRYABLE'::text)),
             '{pendingDispatch}', 'null'::jsonb
-          ), updated_at = CURRENT_TIMESTAMP
+          ), "updatedAt" = CURRENT_TIMESTAMP
           WHERE id = ${doc.id}
             AND metadata->>'extractionRunId' = ${extractionRunId}
             AND metadata->>'graphStatus' IN ('QUEUED', 'PROCESSING')

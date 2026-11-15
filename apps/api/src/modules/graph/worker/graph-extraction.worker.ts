@@ -11,6 +11,7 @@ import { Worker, type Job } from 'bullmq';
 import { env } from '../../../config/env.js';
 import { prisma } from '../../../lib/prisma.js';
 import type { GraphExtractionJobPayload } from '@mindvault/shared';
+import { parseRedisUrl, sanitizeErrorMessage } from '@mindvault/shared';
 import {
   GraphExtractionService,
   graphExtractionService,
@@ -31,6 +32,7 @@ export class GraphExtractionWorker {
     }
 
     try {
+      const connectionOptions = parseRedisUrl(env.REDIS_URL, 'consumer');
       this.worker = new Worker<GraphExtractionJobPayload>(
         'graph-extraction',
         async (job: Job<GraphExtractionJobPayload>) => {
@@ -38,10 +40,7 @@ export class GraphExtractionWorker {
         },
         {
           concurrency: 2,
-          connection: {
-            url: env.REDIS_URL || 'redis://localhost:6379',
-            maxRetriesPerRequest: null,
-          },
+          connection: connectionOptions as any,
         },
       );
 
@@ -50,10 +49,10 @@ export class GraphExtractionWorker {
       });
 
       this.worker.on('failed', (job: Job | undefined, err: Error) => {
-        console.error(`[GraphWorker] Job ${job?.id} failed: ${err.message}`);
+        console.error(`[GraphWorker] Job ${job?.id} failed: ${sanitizeErrorMessage(err.message)}`);
       });
-    } catch (err) {
-      console.warn('[GraphWorker] Redis connection not available. Running in standby mode:', err);
+    } catch (err: any) {
+      console.warn('[GraphWorker] Redis connection not available. Running in standby mode:', sanitizeErrorMessage(err.message));
     }
   }
 
