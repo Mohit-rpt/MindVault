@@ -5,6 +5,7 @@ import {
   WORKER_HEARTBEAT_REDIS_KEY,
 } from '../apps/worker/src/services/worker-heartbeat.service.js';
 import { DocumentIngestionPipeline } from '../apps/worker/src/modules/ingestion/pipeline.js';
+import { detectPgvectorExtension } from '../scripts/verify-worker-preflight.js';
 
 describe('MindVault — Local Windows Worker Runtime & Ingestion Tests', () => {
   const originalFetch = global.fetch;
@@ -190,10 +191,7 @@ describe('MindVault — Local Windows Worker Runtime & Ingestion Tests', () => {
       // 1. Storage existence checked
       expect(mockStorage.exists).toHaveBeenCalledWith(mockDoc.storageKey);
       // 2. Reconstructed buffer saved to local disk cache
-      expect(mockStorage.save).toHaveBeenCalledWith(
-        mockDoc.storageKey,
-        expect.any(Buffer),
-      );
+      expect(mockStorage.save).toHaveBeenCalledWith(mockDoc.storageKey, expect.any(Buffer));
       // 3. Document marked COMPLETED
       expect(mockDb.updateDocument).toHaveBeenCalledWith(
         'doc-uuid-1234',
@@ -253,6 +251,49 @@ describe('MindVault — Local Windows Worker Runtime & Ingestion Tests', () => {
           status: 'COMPLETED',
         }),
       );
+    });
+  });
+
+  // =========================================================================
+  // 4. Preflight pgvector Extension Detection Tests
+  // =========================================================================
+  describe('Preflight pgvector Extension Detection', () => {
+    it('detects pgvector when registered under standard PostgreSQL extension name "vector"', async () => {
+      const mockPrisma = {
+        $queryRawUnsafe: vi.fn().mockResolvedValue([{ extname: 'vector', extversion: '0.8.7' }]),
+      };
+
+      const result = await detectPgvectorExtension(mockPrisma as any);
+
+      expect(mockPrisma.$queryRawUnsafe).toHaveBeenCalledWith(
+        expect.stringContaining("WHERE extname IN ('vector', 'pgvector')"),
+      );
+      expect(result.installed).toBe(true);
+      expect(result.version).toBe('0.8.7');
+      expect(result.extensionName).toBe('vector');
+    });
+
+    it('detects pgvector when registered under alias "pgvector"', async () => {
+      const mockPrisma = {
+        $queryRawUnsafe: vi.fn().mockResolvedValue([{ extname: 'pgvector', extversion: '0.8.0' }]),
+      };
+
+      const result = await detectPgvectorExtension(mockPrisma as any);
+
+      expect(result.installed).toBe(true);
+      expect(result.version).toBe('0.8.0');
+      expect(result.extensionName).toBe('pgvector');
+    });
+
+    it('returns installed=false when pgvector extension is absent from pg_extension table', async () => {
+      const mockPrisma = {
+        $queryRawUnsafe: vi.fn().mockResolvedValue([]),
+      };
+
+      const result = await detectPgvectorExtension(mockPrisma as any);
+
+      expect(result.installed).toBe(false);
+      expect(result.version).toBeUndefined();
     });
   });
 });

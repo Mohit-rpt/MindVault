@@ -64,17 +64,58 @@ const colors = {
   gray: '\x1b[90m',
 };
 
+export interface PgvectorExtensionRecord {
+  extname: string;
+  extversion: string;
+}
+
+export interface PgvectorCheckResult {
+  installed: boolean;
+  version?: string;
+  extensionName?: string;
+}
+
+/**
+ * Deterministically checks for pgvector extension in pg_extension.
+ * Note: PostgreSQL officially registers pgvector under extname = 'vector' (and rarely 'pgvector' in custom builds).
+ */
+export async function detectPgvectorExtension(prismaClient: {
+  $queryRawUnsafe: (query: string) => Promise<any>;
+}): Promise<PgvectorCheckResult> {
+  const extResult = (await prismaClient.$queryRawUnsafe(
+    `SELECT extname, extversion FROM pg_extension WHERE extname IN ('vector', 'pgvector');`,
+  )) as PgvectorExtensionRecord[];
+
+  if (extResult && extResult.length > 0) {
+    return {
+      installed: true,
+      version: extResult[0].extversion,
+      extensionName: extResult[0].extname,
+    };
+  }
+
+  return { installed: false };
+}
+
 async function runWorkerPreflight(): Promise<void> {
-  console.log(`${colors.cyan}========================================================================${colors.reset}`);
-  console.log(`${colors.bold}MindVault — Local Windows Worker Preflight Verification${colors.reset}`);
-  console.log(`${colors.cyan}========================================================================${colors.reset}`);
+  console.log(
+    `${colors.cyan}========================================================================${colors.reset}`,
+  );
+  console.log(
+    `${colors.bold}MindVault — Local Windows Worker Preflight Verification${colors.reset}`,
+  );
+  console.log(
+    `${colors.cyan}========================================================================${colors.reset}`,
+  );
   console.log(`OS Platform:   ${os.type()} ${os.release()} (${os.arch()})`);
   console.log(`CPU Cores:     ${os.cpus().length}x ${os.cpus()[0]?.model || 'CPU'}`);
   console.log(`Total Memory:  ${Math.round(os.totalmem() / 1024 / 1024 / 1024)} GB RAM`);
   console.log(`Node Version:  ${process.version}`);
   console.log(`Target Queue:  document-processing & graph-extraction`);
   console.log(`Timestamp:     ${new Date().toISOString()}`);
-  console.log(`${colors.cyan}========================================================================${colors.reset}\n`);
+  console.log(
+    `${colors.cyan}========================================================================${colors.reset}\n`,
+  );
 
   let allPassed = true;
 
@@ -91,7 +132,9 @@ async function runWorkerPreflight(): Promise<void> {
     if (dupCheck.hasDuplicates) {
       console.log(`  ${colors.yellow}[ WARN ] ${dupCheck.message}${colors.reset}`);
     } else {
-      console.log(`  ${colors.green}[ PASS ] .env structure verified without duplicate keys${colors.reset}`);
+      console.log(
+        `  ${colors.green}[ PASS ] .env structure verified without duplicate keys${colors.reset}`,
+      );
     }
   }
 
@@ -102,23 +145,33 @@ async function runWorkerPreflight(): Promise<void> {
   } else {
     const validation = validateUpstashRedisUrl(redisUrl);
     if (!validation.valid) {
-      console.log(`  ${colors.red}[ FAIL ] REDIS_URL validation failed: ${validation.error}${colors.reset}`);
+      console.log(
+        `  ${colors.red}[ FAIL ] REDIS_URL validation failed: ${validation.error}${colors.reset}`,
+      );
       allPassed = false;
     } else {
-      console.log(`  ${colors.green}[ PASS ] Valid Upstash Redis TLS URL: ${sanitizeRedisUrl(redisUrl)}${colors.reset}`);
+      console.log(
+        `  ${colors.green}[ PASS ] Valid Upstash Redis TLS URL: ${sanitizeRedisUrl(redisUrl)}${colors.reset}`,
+      );
     }
   }
 
   const concurrencyStr = process.env.WORKER_CONCURRENCY || '1';
   const concurrency = parseInt(concurrencyStr, 10);
   if (isNaN(concurrency) || concurrency <= 0) {
-    console.log(`  ${colors.red}[ FAIL ] WORKER_CONCURRENCY must be a positive integer (received "${concurrencyStr}")${colors.reset}`);
+    console.log(
+      `  ${colors.red}[ FAIL ] WORKER_CONCURRENCY must be a positive integer (received "${concurrencyStr}")${colors.reset}`,
+    );
     allPassed = false;
   } else {
     if (concurrency > 2 && os.totalmem() <= 8 * 1024 * 1024 * 1024) {
-      console.log(`  ${colors.yellow}[ WARN ] Concurrency set to ${concurrency}. For 8GB RAM machines, concurrency=1 is recommended for local AI models.${colors.reset}`);
+      console.log(
+        `  ${colors.yellow}[ WARN ] Concurrency set to ${concurrency}. For 8GB RAM machines, concurrency=1 is recommended for local AI models.${colors.reset}`,
+      );
     } else {
-      console.log(`  ${colors.green}[ PASS ] Worker concurrency configured: ${concurrency}${colors.reset}`);
+      console.log(
+        `  ${colors.green}[ PASS ] Worker concurrency configured: ${concurrency}${colors.reset}`,
+      );
     }
   }
 
@@ -135,13 +188,19 @@ async function runWorkerPreflight(): Promise<void> {
       const pong = await client.ping();
       const pingMs = Math.round(performance.now() - pingStart);
       if (pong === 'PONG') {
-        console.log(`  ${colors.green}[ PASS ] Redis connection established (${pingMs}ms PING latency)${colors.reset}`);
+        console.log(
+          `  ${colors.green}[ PASS ] Redis connection established (${pingMs}ms PING latency)${colors.reset}`,
+        );
       } else {
-        console.log(`  ${colors.red}[ FAIL ] Unexpected Redis PING response: ${pong}${colors.reset}`);
+        console.log(
+          `  ${colors.red}[ FAIL ] Unexpected Redis PING response: ${pong}${colors.reset}`,
+        );
         allPassed = false;
       }
     } catch (err: any) {
-      console.log(`  ${colors.red}[ FAIL ] Redis connection error: ${sanitizeErrorMessage(err.message)}${colors.reset}`);
+      console.log(
+        `  ${colors.red}[ FAIL ] Redis connection error: ${sanitizeErrorMessage(err.message)}${colors.reset}`,
+      );
       allPassed = false;
     } finally {
       if (client) {
@@ -157,7 +216,9 @@ async function runWorkerPreflight(): Promise<void> {
   // -------------------------------------------------------------------------
   // 3. PostgreSQL Database Connectivity & pgvector Check
   // -------------------------------------------------------------------------
-  console.log(`\n${colors.bold}[3/5] Testing PostgreSQL Connectivity & pgvector Extension...${colors.reset}`);
+  console.log(
+    `\n${colors.bold}[3/5] Testing PostgreSQL Connectivity & pgvector Extension...${colors.reset}`,
+  );
   const dbUrl = process.env.DATABASE_URL;
   if (!dbUrl) {
     console.log(`  ${colors.red}[ FAIL ] DATABASE_URL is not set${colors.reset}`);
@@ -168,18 +229,24 @@ async function runWorkerPreflight(): Promise<void> {
       const dbStart = performance.now();
       await prisma.$queryRaw`SELECT 1;`;
       const dbMs = Math.round(performance.now() - dbStart);
-      console.log(`  ${colors.green}[ PASS ] PostgreSQL connected successfully (${dbMs}ms latency)${colors.reset}`);
+      console.log(
+        `  ${colors.green}[ PASS ] PostgreSQL connected successfully (${dbMs}ms latency)${colors.reset}`,
+      );
 
-      const extResult = (await prisma.$queryRawUnsafe(
-        `SELECT extversion FROM pg_extension WHERE extname = 'pgvector';`,
-      )) as Array<{ extversion: string }>;
-      if (extResult && extResult.length > 0) {
-        console.log(`  ${colors.green}[ PASS ] pgvector extension active (version: ${extResult[0].extversion})${colors.reset}`);
+      const extCheck = await detectPgvectorExtension(prisma);
+      if (extCheck.installed) {
+        console.log(
+          `  ${colors.green}[ PASS ] pgvector extension active (version: ${extCheck.version})${colors.reset}`,
+        );
       } else {
-        console.log(`  ${colors.yellow}[ WARN ] pgvector extension not found in pg_extension table${colors.reset}`);
+        console.log(
+          `  ${colors.yellow}[ WARN ] pgvector extension not found in pg_extension table${colors.reset}`,
+        );
       }
     } catch (err: any) {
-      console.log(`  ${colors.red}[ FAIL ] Database connection error: ${sanitizeErrorMessage(err.message)}${colors.reset}`);
+      console.log(
+        `  ${colors.red}[ FAIL ] Database connection error: ${sanitizeErrorMessage(err.message)}${colors.reset}`,
+      );
       allPassed = false;
     } finally {
       await prisma.$disconnect();
@@ -190,7 +257,10 @@ async function runWorkerPreflight(): Promise<void> {
   // 4. Local Ollama & Required Models Check
   // -------------------------------------------------------------------------
   console.log(`\n${colors.bold}[4/5] Checking Local Ollama AI Readiness...${colors.reset}`);
-  const ollamaBaseUrl = (process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434').replace(/\/$/, '');
+  const ollamaBaseUrl = (process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434').replace(
+    /\/$/,
+    '',
+  );
   const genModel = process.env.OLLAMA_GENERATION_MODEL || 'qwen3:0.6b';
   const embedModel = process.env.EMBEDDING_MODEL || 'nomic-embed-text';
 
@@ -213,25 +283,39 @@ async function runWorkerPreflight(): Promise<void> {
       };
 
       if (isModelInstalled(embedModel)) {
-        console.log(`  ${colors.green}[ PASS ] Embedding model '${embedModel}' installed${colors.reset}`);
+        console.log(
+          `  ${colors.green}[ PASS ] Embedding model '${embedModel}' installed${colors.reset}`,
+        );
       } else {
-        console.log(`  ${colors.red}[ FAIL ] Missing embedding model '${embedModel}'. Run: 'ollama pull ${embedModel}'${colors.reset}`);
+        console.log(
+          `  ${colors.red}[ FAIL ] Missing embedding model '${embedModel}'. Run: 'ollama pull ${embedModel}'${colors.reset}`,
+        );
         allPassed = false;
       }
 
       if (isModelInstalled(genModel)) {
-        console.log(`  ${colors.green}[ PASS ] Generation model '${genModel}' installed${colors.reset}`);
+        console.log(
+          `  ${colors.green}[ PASS ] Generation model '${genModel}' installed${colors.reset}`,
+        );
       } else {
-        console.log(`  ${colors.red}[ FAIL ] Missing generation model '${genModel}'. Run: 'ollama pull ${genModel}'${colors.reset}`);
+        console.log(
+          `  ${colors.red}[ FAIL ] Missing generation model '${genModel}'. Run: 'ollama pull ${genModel}'${colors.reset}`,
+        );
         allPassed = false;
       }
     } else {
-      console.log(`  ${colors.red}[ FAIL ] Ollama endpoint responded with HTTP ${res.status}${colors.reset}`);
+      console.log(
+        `  ${colors.red}[ FAIL ] Ollama endpoint responded with HTTP ${res.status}${colors.reset}`,
+      );
       allPassed = false;
     }
   } catch (err: any) {
-    console.log(`  ${colors.red}[ FAIL ] Ollama unreachable at ${ollamaBaseUrl}: ${err.message}${colors.reset}`);
-    console.log(`  ${colors.yellow}[ ACTION ] Ensure Ollama is running: execute 'ollama serve' in PowerShell.${colors.reset}`);
+    console.log(
+      `  ${colors.red}[ FAIL ] Ollama unreachable at ${ollamaBaseUrl}: ${err.message}${colors.reset}`,
+    );
+    console.log(
+      `  ${colors.yellow}[ ACTION ] Ensure Ollama is running: execute 'ollama serve' in PowerShell.${colors.reset}`,
+    );
     allPassed = false;
   }
 
@@ -246,30 +330,53 @@ async function runWorkerPreflight(): Promise<void> {
   try {
     if (!fs.existsSync(storageDir)) {
       fs.mkdirSync(storageDir, { recursive: true });
-      console.log(`  ${colors.green}[ PASS ] Created storage directory: ${storageDir}${colors.reset}`);
+      console.log(
+        `  ${colors.green}[ PASS ] Created storage directory: ${storageDir}${colors.reset}`,
+      );
     } else {
-      console.log(`  ${colors.green}[ PASS ] Storage directory accessible: ${storageDir}${colors.reset}`);
+      console.log(
+        `  ${colors.green}[ PASS ] Storage directory accessible: ${storageDir}${colors.reset}`,
+      );
     }
   } catch (err: any) {
-    console.log(`  ${colors.red}[ FAIL ] Storage directory inaccessible: ${err.message}${colors.reset}`);
+    console.log(
+      `  ${colors.red}[ FAIL ] Storage directory inaccessible: ${err.message}${colors.reset}`,
+    );
     allPassed = false;
   }
 
-  console.log(`\n${colors.cyan}========================================================================${colors.reset}`);
+  console.log(
+    `\n${colors.cyan}========================================================================${colors.reset}`,
+  );
   if (allPassed) {
-    console.log(`${colors.green}${colors.bold}RESULT: LOCAL WORKER PREFLIGHT PASSED${colors.reset}`);
+    console.log(
+      `${colors.green}${colors.bold}RESULT: LOCAL WORKER PREFLIGHT PASSED${colors.reset}`,
+    );
     console.log(`All systems operational. The local Windows background worker is ready to run.`);
-    console.log(`${colors.cyan}========================================================================${colors.reset}\n`);
+    console.log(
+      `${colors.cyan}========================================================================${colors.reset}\n`,
+    );
     process.exit(0);
   } else {
     console.log(`${colors.red}${colors.bold}RESULT: LOCAL WORKER PREFLIGHT BLOCKED${colors.reset}`);
-    console.log(`One or more required dependencies failed validation. Resolve the issues above before starting the worker.`);
-    console.log(`${colors.cyan}========================================================================${colors.reset}\n`);
+    console.log(
+      `One or more required dependencies failed validation. Resolve the issues above before starting the worker.`,
+    );
+    console.log(
+      `${colors.cyan}========================================================================${colors.reset}\n`,
+    );
     process.exit(1);
   }
 }
 
-runWorkerPreflight().catch((err) => {
-  console.error('\nPreflight Diagnostic Fatal Error:', err);
-  process.exit(1);
-});
+const isDirectExecution =
+  Boolean(process.argv[1]) &&
+  (process.argv[1].endsWith('verify-worker-preflight.ts') ||
+    process.argv[1].endsWith('verify-worker-preflight.js'));
+
+if (isDirectExecution) {
+  runWorkerPreflight().catch((err) => {
+    console.error('\nPreflight Diagnostic Fatal Error:', err);
+    process.exit(1);
+  });
+}

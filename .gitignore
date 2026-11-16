@@ -48,3 +48,6 @@ coverage/
 # Temporary files
 tmp/
 temp/
+full_diff.txt
+*.diff
+*.patch

@@ -10,11 +10,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import {
-  parseRedisUrl,
-  sanitizeRedisUrl,
-  getSafeRedisEndpoint,
-} from '@mindvault/shared';
+import { parseRedisUrl, sanitizeRedisUrl, getSafeRedisEndpoint } from '@mindvault/shared';
 import { BullMQDocumentQueue } from '../apps/api/src/modules/document/document.queue.js';
 import { WorkerService } from '../apps/worker/src/worker.js';
 import { WorkerStorageProvider } from '../apps/worker/src/lib/storage.js';
@@ -37,7 +33,10 @@ if (fs.existsSync(envPath)) {
     const idx = trimmed.indexOf('=');
     if (idx !== -1) {
       const k = trimmed.slice(0, idx).trim();
-      const v = trimmed.slice(idx + 1).trim().replace(/^['"]|['"]$/g, '');
+      const v = trimmed
+        .slice(idx + 1)
+        .trim()
+        .replace(/^['"]|['"]$/g, '');
       if (!process.env[k]) process.env[k] = v;
     }
   }
@@ -52,7 +51,9 @@ async function runE2EVerification() {
 
   const redisUrl = process.env.REDIS_URL || '';
   const safeEndpoint = getSafeRedisEndpoint(redisUrl);
-  console.log(`Upstash Endpoint:  ${safeEndpoint.host}:${safeEndpoint.port} (TLS: ${safeEndpoint.isTls})`);
+  console.log(
+    `Upstash Endpoint:  ${safeEndpoint.host}:${safeEndpoint.port} (TLS: ${safeEndpoint.isTls})`,
+  );
   console.log(`Sanitized Target:  ${sanitizeRedisUrl(redisUrl)}`);
   console.log(`Timestamp:         ${new Date().toISOString()}`);
   console.log('========================================================================\n');
@@ -134,7 +135,7 @@ async function runE2EVerification() {
     // -------------------------------------------------------------------------
     console.log('\n[Phase 2/6] Enqueueing job through API BullMQ producer...');
     producerQueue = new BullMQDocumentQueue(true); // forceRealQueue = true
-    const bullQueue = producerQueue.getQueue();
+    const bullQueue = producerQueue.getQueue(ws.id);
 
     if (!bullQueue) {
       throw new Error('API BullMQ queue producer failed to connect to Upstash Redis');
@@ -174,7 +175,7 @@ async function runE2EVerification() {
     );
 
     workerService = new WorkerService(pipeline);
-    await workerService.start({ forceLiveBullMQ: true });
+    await workerService.start({ forceLiveBullMQ: true, workspaceIds: [ws.id] });
 
     const bullWorker = workerService.getBullWorker();
     if (!bullWorker) {
@@ -226,7 +227,9 @@ async function runE2EVerification() {
     console.log('\n[Phase 5/6] Verifying persisted state in PostgreSQL...');
     console.log(`  [ PASS ] Document status:     ${finalDoc.status}`);
     console.log(`  [ PASS ] Chunk count:         ${finalDoc.chunkCount}`);
-    console.log(`  [ PASS ] Embedding model:     ${finalDoc.embeddingModel} (${finalDoc.embeddingDimension}-dim)`);
+    console.log(
+      `  [ PASS ] Embedding model:     ${finalDoc.embeddingModel} (${finalDoc.embeddingDimension}-dim)`,
+    );
     console.log(`  [ PASS ] Processed at:        ${finalDoc.processedAt?.toISOString()}`);
     console.log(`  [ PASS ] Processing stage:    ${finalDoc.metadata?.processingStage}`);
     console.log(`  [ PASS ] Graph status:        ${finalDoc.metadata?.graphStatus}`);
@@ -252,7 +255,9 @@ async function runE2EVerification() {
     )) as Array<{ id: string; vec_len: number }>;
 
     if (vectorCheck.length > 0) {
-      console.log(`  [ PASS ] Vector embedding:    Persisted in pgvector (string length: ${vectorCheck[0].vec_len})`);
+      console.log(
+        `  [ PASS ] Vector embedding:    Persisted in pgvector (string length: ${vectorCheck[0].vec_len})`,
+      );
     }
 
     // -------------------------------------------------------------------------
@@ -316,7 +321,9 @@ async function runE2EVerification() {
     try {
       await storage.delete(testStorageKey);
       console.log(`  Deleted storage file: ${testStorageKey}`);
-    } catch {}
+    } catch {
+      // Storage file may already have been removed or was not created
+    }
 
     // Clean up test records from PostgreSQL (scoped strictly to test workspaceId and userId)
     if (workspaceId) {
