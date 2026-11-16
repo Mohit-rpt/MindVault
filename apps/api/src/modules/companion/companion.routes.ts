@@ -189,14 +189,24 @@ companionRouter.post('/device/register', companionPairingRateLimiter, authentica
 });
 
 // 4. Device status check (device token required)
-companionRouter.get('/device/status', companionManagementRateLimiter, authenticateDevice, (req, res) => {
-  companionController.getStatus(req, res);
-});
+companionRouter.get(
+  '/device/status',
+  companionManagementRateLimiter,
+  authenticateDevice,
+  (req, res) => {
+    companionController.getStatus(req, res);
+  },
+);
 
 // 5. Device revocation (device token required)
-companionRouter.post('/device/revoke', companionManagementRateLimiter, authenticateDevice, (req, res) => {
-  companionController.revoke(req, res);
-});
+companionRouter.post(
+  '/device/revoke',
+  companionManagementRateLimiter,
+  authenticateDevice,
+  (req, res) => {
+    companionController.revoke(req, res);
+  },
+);
 
 // 6. Pending job availability probe for local companion polling (device token required) (§ARC-01)
 companionRouter.get('/jobs/status', companionPollingRateLimiter, authenticateDevice, (req, res) => {

@@ -86,7 +86,13 @@ export class GraphExtractionWorker {
 
   public async resolveWorkspaces(options?: { workspaceIds?: string[] }): Promise<string[]> {
     if (options?.workspaceIds && options.workspaceIds.length > 0) {
-      return [...new Set(options.workspaceIds.map((id) => id.trim()).filter((id) => Boolean(id) && id !== 'undefined' && id !== 'null'))];
+      return [
+        ...new Set(
+          options.workspaceIds
+            .map((id) => id.trim())
+            .filter((id) => Boolean(id) && id !== 'undefined' && id !== 'null'),
+        ),
+      ];
     }
     if (process.env.AUTHORIZED_WORKSPACE_IDS) {
       const ids = process.env.AUTHORIZED_WORKSPACE_IDS.split(',')
@@ -163,17 +169,25 @@ export class GraphExtractionWorker {
             this.logger.info(`Job ${job?.id} cleanly deferred to wait queue`);
             return;
           }
-          this.logger.error(`Job ${job?.id} failed on queue "${qName}": ${sanitizeErrorMessage(err.message)}`);
+          this.logger.error(
+            `Job ${job?.id} failed on queue "${qName}": ${sanitizeErrorMessage(err.message)}`,
+          );
         });
         w.on('error', (err: Error) => {
-          this.logger.warn(`BullMQ graph worker connection error on queue "${qName}": ${sanitizeErrorMessage(err.message)}`);
+          this.logger.warn(
+            `BullMQ graph worker connection error on queue "${qName}": ${sanitizeErrorMessage(err.message)}`,
+          );
         });
 
         this.workersByQueue.set(qName, w);
         this.workers.push(w);
-        this.logger.info(`GraphExtractionWorker actively listening on queue "${qName}" (BullMQ: "${safeBullName}")`);
+        this.logger.info(
+          `GraphExtractionWorker actively listening on queue "${qName}" (BullMQ: "${safeBullName}")`,
+        );
       } catch (err: any) {
-        this.logger.warn(`Could not register graph worker for queue "${qName}": ${sanitizeErrorMessage(err.message)}`);
+        this.logger.warn(
+          `Could not register graph worker for queue "${qName}": ${sanitizeErrorMessage(err.message)}`,
+        );
       }
     }
 
@@ -228,7 +242,10 @@ export class GraphExtractionWorker {
     }
   }
 
-  public async start(options?: { forceLiveBullMQ?: boolean; workspaceIds?: string[] }): Promise<void> {
+  public async start(options?: {
+    forceLiveBullMQ?: boolean;
+    workspaceIds?: string[];
+  }): Promise<void> {
     if (this.isRunning) return;
     this.isRunning = true;
     this.isShuttingDown = false;
@@ -279,7 +296,7 @@ export class GraphExtractionWorker {
       this.discoveryIntervalTimer = null;
     }
 
-    const allWorkers = this.workers.length > 0 ? this.workers : (this.worker ? [this.worker] : []);
+    const allWorkers = this.workers.length > 0 ? this.workers : this.worker ? [this.worker] : [];
     if (allWorkers.length > 0) {
       for (const w of allWorkers) {
         try {
@@ -295,9 +312,7 @@ export class GraphExtractionWorker {
     for (const [jobId, entry] of this.activeJobs.entries()) {
       this.logger.info(`Arming 8-second chunk completion budget for active job ${jobId}`);
       entry.timeoutId = setTimeout(() => {
-        this.logger.warn(
-          `Chunk budget expired (8s) for job ${jobId}; aborting in-flight LLM call`,
-        );
+        this.logger.warn(`Chunk budget expired (8s) for job ${jobId}; aborting in-flight LLM call`);
         entry.abortController.abort();
       }, 8000);
     }

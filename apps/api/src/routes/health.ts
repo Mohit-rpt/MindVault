@@ -46,7 +46,7 @@ export function setRedisHealthClient(client: Redis | null): void {
   testRedisClient = client;
 }
 
-// Helper to probe PostgreSQL with a 1 s timeout.
+// Helper to probe PostgreSQL with a 1 s timeout.
 async function performDbCheck() {
   let dbStatus: 'healthy' | 'unhealthy' | 'unknown' = 'unknown';
   let dbLatencyMs: number | undefined;
@@ -54,10 +54,18 @@ async function performDbCheck() {
 
   if (env.NODE_ENV === 'test') {
     if (process.env.DB_CHECK_FORCE_UNKNOWN === '1') {
-      return { dbStatus: 'unknown' as const, dbLatencyMs: undefined, dbMessage: 'PostgreSQL connection status unknown' };
+      return {
+        dbStatus: 'unknown' as const,
+        dbLatencyMs: undefined,
+        dbMessage: 'PostgreSQL connection status unknown',
+      };
     }
     if (process.env.DB_CHECK_FORCE_FAIL === '1') {
-      return { dbStatus: 'unhealthy' as const, dbLatencyMs: undefined, dbMessage: 'Forced DB failure (test)' };
+      return {
+        dbStatus: 'unhealthy' as const,
+        dbLatencyMs: undefined,
+        dbMessage: 'Forced DB failure (test)',
+      };
     }
   }
 
@@ -92,7 +100,7 @@ async function performDbCheck() {
   return { dbStatus, dbLatencyMs, dbMessage };
 }
 
-// Helper to probe Redis with a 1 s timeout using the shared BullMQ Redis client.
+// Helper to probe Redis with a 1 s timeout using the shared BullMQ Redis client.
 async function performRedisCheck() {
   let redisStatus: 'healthy' | 'unhealthy' | 'unknown' = 'unknown';
   let redisLatencyMs: number | undefined;
@@ -143,7 +151,10 @@ healthRouter.get('/live', (_req: Request, res: Response) => {
 
 // Readiness probe – checks DB and Redis, returns 200 when both are healthy.
 healthRouter.get('/ready', async (_req: Request, res: Response) => {
-  const [{ dbStatus }, { redisStatus }] = await Promise.all([performDbCheck(), performRedisCheck()]);
+  const [{ dbStatus }, { redisStatus }] = await Promise.all([
+    performDbCheck(),
+    performRedisCheck(),
+  ]);
   const overallHealthy = dbStatus === 'healthy' && redisStatus === 'healthy';
   if (overallHealthy) {
     res.status(200).json({ status: 'ready' });
@@ -280,4 +291,3 @@ healthRouter.get('/companion', async (_req: Request, res: Response) => {
     });
   }
 });
-

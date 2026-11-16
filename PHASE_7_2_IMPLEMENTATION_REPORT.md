@@ -3,7 +3,7 @@
 **Date:** 2026-11-15  
 **Monorepo:** MindVault  
 **Auditor Target:** Independent Post-Remediation Verification (Phase 7.1 Audit Findings)  
-**Status:** **RESOLVED & VERIFIED (PRODUCTION READY / GO)**  
+**Status:** **RESOLVED & VERIFIED (PRODUCTION READY / GO)**
 
 ---
 
@@ -22,14 +22,14 @@ Phase 7.2 resolves all P0 reliability defects, P1 security risks, and queue life
 
 ## Section A: Audit Remediation Matrix
 
-| Finding ID | Severity | Audit Description | Root Cause | Code-Level Resolution | Verification Evidence |
-| :--- | :---: | :--- | :--- | :--- | :--- |
-| **AUD-71-01** | **P0** | Ingestion pipeline processor returning `{ status: 'skipped_local_required' }` marks job `COMPLETED` in BullMQ, silently dropping local jobs. | Returning a resolved object from a BullMQ worker function instructs BullMQ that the job finished successfully. | Replaced return with active re-enqueueing to `getDocumentQueueName(workspaceId, 'local')` via `toBullQueueName`. Re-routing failure throws an error so the job stays in BullMQ retry flow. | `tests/real-redis-integration.test.ts`<br>`tests/queue-isolation.integration.test.ts` |
-| **AUD-71-02** | **P0** | Graph worker processor returning `{ status: 'skipped_local_required' }` marks graph extraction job `COMPLETED` in BullMQ. | Returning resolved promise in `GraphExtractionWorker.processJob` completed BullMQ job without extracting graph entities. | Implemented capability re-routing to `getGraphQueueName(workspaceId, 'local')` and dedicated capability partition workers. Failure throws error to preserve job in queue. | `tests/real-redis-integration.test.ts`<br>`tests/queue-isolation.integration.test.ts` |
-| **AUD-71-03** | **P0** | `GraphReconciliationService` calls `this.queue.getJob(jobId)` without `workspaceId`, checking only default fallback queue and causing duplicate enqueues. | `IGraphExtractionQueue.getJob` lacked workspace context, so BullMQ checked only `graph-extraction:default`. | Updated `IGraphExtractionQueue` and `IWorkerGraphQueue` to accept `(jobId, workspaceId?, capability?)`. Reconciler now passes `doc.workspaceId`. | `apps/worker/src/services/graph-reconciliation.service.ts`<br>`tests/real-redis-integration.test.ts` |
-| **AUD-71-04** | **P0** | `DispatchRecoveryService` calls `this.queue.getJob(jobId)` without `workspaceId`, misdiagnosing missing jobs and resetting run IDs. | Recovery service called `getJob` without tenant context, failing to locate active jobs on workspace queues. | Updated `DispatchRecoveryService` lines 251 and 393 to pass `doc.workspaceId` to `this.queue.getJob(jobId, doc.workspaceId)`. | `apps/worker/src/services/dispatch-recovery.service.ts`<br>`tests/real-redis-integration.test.ts` |
-| **AUD-71-05** | **P1** | `RedisRateLimitStore` falls back to in-memory store when Redis fails, weakening pairing brute-force protection on multi-replica deployments. | Rate limiter store caught Redis errors and silently reverted to `MemoryStore` across all routes. | Added `failClosed: true` option to `RedisRateLimitStore`. When enabled on pairing routes, errors throw HTTP 503 `SERVICE_UNAVAILABLE`. | `apps/api/src/modules/companion/companion.routes.ts`<br>`tests/real-redis-integration.test.ts` |
-| **AUD-71-06** | **P1** | No queue lifecycle management exists when workspaces are deleted, leaving orphaned BullMQ Redis keys and scheduled jobs. | `WorkspaceService.deleteWorkspace` only deleted database rows via Prisma cascading deletes. | Created `WorkspaceQueueService` that safely pauses active queues, obliterates non-active queue keys, and integrates into `deleteWorkspace`. | `apps/api/src/modules/workspace/workspace-queue.service.ts`<br>`apps/api/src/modules/workspace/workspace.service.ts` |
+| Finding ID    | Severity | Audit Description                                                                                                                                         | Root Cause                                                                                                               | Code-Level Resolution                                                                                                                                                                      | Verification Evidence                                                                                                |
+| :------------ | :------: | :-------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------- |
+| **AUD-71-01** |  **P0**  | Ingestion pipeline processor returning `{ status: 'skipped_local_required' }` marks job `COMPLETED` in BullMQ, silently dropping local jobs.              | Returning a resolved object from a BullMQ worker function instructs BullMQ that the job finished successfully.           | Replaced return with active re-enqueueing to `getDocumentQueueName(workspaceId, 'local')` via `toBullQueueName`. Re-routing failure throws an error so the job stays in BullMQ retry flow. | `tests/real-redis-integration.test.ts`<br>`tests/queue-isolation.integration.test.ts`                                |
+| **AUD-71-02** |  **P0**  | Graph worker processor returning `{ status: 'skipped_local_required' }` marks graph extraction job `COMPLETED` in BullMQ.                                 | Returning resolved promise in `GraphExtractionWorker.processJob` completed BullMQ job without extracting graph entities. | Implemented capability re-routing to `getGraphQueueName(workspaceId, 'local')` and dedicated capability partition workers. Failure throws error to preserve job in queue.                  | `tests/real-redis-integration.test.ts`<br>`tests/queue-isolation.integration.test.ts`                                |
+| **AUD-71-03** |  **P0**  | `GraphReconciliationService` calls `this.queue.getJob(jobId)` without `workspaceId`, checking only default fallback queue and causing duplicate enqueues. | `IGraphExtractionQueue.getJob` lacked workspace context, so BullMQ checked only `graph-extraction:default`.              | Updated `IGraphExtractionQueue` and `IWorkerGraphQueue` to accept `(jobId, workspaceId?, capability?)`. Reconciler now passes `doc.workspaceId`.                                           | `apps/worker/src/services/graph-reconciliation.service.ts`<br>`tests/real-redis-integration.test.ts`                 |
+| **AUD-71-04** |  **P0**  | `DispatchRecoveryService` calls `this.queue.getJob(jobId)` without `workspaceId`, misdiagnosing missing jobs and resetting run IDs.                       | Recovery service called `getJob` without tenant context, failing to locate active jobs on workspace queues.              | Updated `DispatchRecoveryService` lines 251 and 393 to pass `doc.workspaceId` to `this.queue.getJob(jobId, doc.workspaceId)`.                                                              | `apps/worker/src/services/dispatch-recovery.service.ts`<br>`tests/real-redis-integration.test.ts`                    |
+| **AUD-71-05** |  **P1**  | `RedisRateLimitStore` falls back to in-memory store when Redis fails, weakening pairing brute-force protection on multi-replica deployments.              | Rate limiter store caught Redis errors and silently reverted to `MemoryStore` across all routes.                         | Added `failClosed: true` option to `RedisRateLimitStore`. When enabled on pairing routes, errors throw HTTP 503 `SERVICE_UNAVAILABLE`.                                                     | `apps/api/src/modules/companion/companion.routes.ts`<br>`tests/real-redis-integration.test.ts`                       |
+| **AUD-71-06** |  **P1**  | No queue lifecycle management exists when workspaces are deleted, leaving orphaned BullMQ Redis keys and scheduled jobs.                                  | `WorkspaceService.deleteWorkspace` only deleted database rows via Prisma cascading deletes.                              | Created `WorkspaceQueueService` that safely pauses active queues, obliterates non-active queue keys, and integrates into `deleteWorkspace`.                                                | `apps/api/src/modules/workspace/workspace-queue.service.ts`<br>`apps/api/src/modules/workspace/workspace.service.ts` |
 
 ---
 
@@ -38,29 +38,35 @@ Phase 7.2 resolves all P0 reliability defects, P1 security risks, and queue life
 ### 1. Capability Partitioning & BullMQ Colon Constraint Handling
 
 BullMQ v5 strictly validates queue names:
+
 ```typescript
 if (name.includes(':')) {
   throw new Error('Queue name cannot contain :');
 }
 ```
+
 Because MindVault’s architecture defines logical queue names as:
+
 - `document-processing:{workspaceId}:local`
 - `document-processing:{workspaceId}:cloud`
 - `graph-extraction:{workspaceId}:local`
 - `graph-extraction:{workspaceId}:cloud`
 
 We introduced a bidirectional abstraction in `@mindvault/shared`:
+
 ```typescript
 // packages/shared/src/types.ts
 export function toBullQueueName(queueName: string): string {
   return queueName.replace(/:/g, '--');
 }
 ```
+
 All external APIs, database records, and logging maintain the clean `domain:workspaceId:capability` notation, while BullMQ underlying `Queue` and `Worker` instances use the sanitized `domain--workspaceId--capability` notation.
 
 ### 2. Capability Producer Routing
 
 When documents are uploaded via `DocumentService.uploadDocument`:
+
 ```typescript
 // apps/api/src/modules/document/document.service.ts
 const capability: WorkerCapability = requiresLocal ? 'local' : 'cloud';
@@ -75,6 +81,7 @@ await this.queue.enqueue({
 ```
 
 `BullMQDocumentQueue.enqueue` resolves the target queue dynamically:
+
 ```typescript
 // apps/api/src/modules/document/document.queue.ts
 const targetCapability = payload.capability || (payload.requiresLocal ? 'local' : 'cloud');
@@ -84,6 +91,7 @@ const queue = this.getQueue(payload.workspaceId, targetCapability);
 ### 3. Capability Consumer Listeners
 
 When `WorkerService` or `GraphExtractionWorker` starts:
+
 ```typescript
 // apps/worker/src/worker.ts & apps/worker/src/modules/graph/worker/graph-extraction.worker.ts
 const workerType = env.WORKER_TYPE; // 'local' | 'cloud' | 'all'
@@ -101,11 +109,13 @@ if (workerType === 'local') {
   );
 }
 ```
+
 Each worker instance subscribes exclusively to its authorized capability partition.
 
 ### 4. Zero-Loss Re-Routing Fallback
 
 If an unexpected routing anomaly occurs (e.g., misconfigured manual test payload or race condition), the processor catches the discrepancy, re-routes the job into the appropriate partition, and throws on failure:
+
 ```typescript
 // apps/worker/src/modules/ingestion/pipeline.ts
 if (process.env.WORKER_TYPE === 'cloud' && requiresLocal) {
@@ -116,6 +126,7 @@ if (process.env.WORKER_TYPE === 'cloud' && requiresLocal) {
   return { status: 'rerouted_to_local', targetWorkspaceId: workspaceId };
 }
 ```
+
 BullMQ never receives a false success signal on an unprocessed job.
 
 ---
@@ -123,23 +134,27 @@ BullMQ never receives a false success signal on an unprocessed job.
 ## Section C: Reconciliation & Recovery Verification
 
 Prior to Phase 7.2, `GraphReconciliationService` and `DispatchRecoveryService` inspected jobs using:
+
 ```typescript
 // Previous implementation: Checked only unpartitioned fallback queue!
 const existingJob = await this.queue.getJob(jobId);
 ```
 
 This caused two severe bugs:
+
 1. `existingJob` returned `null` even though the job was healthy and waiting in `graph-extraction:{workspaceId}:local`.
 2. The reconciler concluded the job was lost, creating duplicate runs or marking documents as failed.
 
 ### Remediation
 
 Both `IGraphExtractionQueue` and `IWorkerGraphQueue` now define:
+
 ```typescript
 getJob(jobId: string, workspaceId?: string, capability?: WorkerCapability): Promise<any>;
 ```
 
 In `BullMQWorkerGraphQueue.getJob`:
+
 ```typescript
 // apps/worker/src/lib/graph-queue.ts
 if (workspaceId) {
@@ -158,12 +173,14 @@ if (workspaceId) {
 ```
 
 In `GraphReconciliationService`:
+
 ```typescript
 // Lines 330 & 374:
 const existingJob = await this.queue.getJob(jobId, doc.workspaceId);
 ```
 
 In `DispatchRecoveryService`:
+
 ```typescript
 // Lines 251 & 393:
 const existingJob = await this.queue.getJob(jobId, doc.workspaceId);
@@ -174,11 +191,15 @@ const existingJob = await this.queue.getJob(jobId, doc.workspaceId);
 ## Section D: Security & Rate-Limiting Hardening
 
 ### Threat Model
+
 On cloud-hosted MindVault deployments, multiple API replicas run behind a load balancer. If Redis becomes temporarily unreachable:
+
 - Failing open to in-memory counters resets attempt limits per process replica, allowing adversaries to bypass the 5-attempt limit on pairing code redemption.
 
 ### Remediation
+
 `RedisRateLimitStore` now supports a `failClosed?: boolean` configuration:
+
 ```typescript
 // apps/api/src/modules/companion/companion.routes.ts
 export class RedisRateLimitStore {
@@ -207,6 +228,7 @@ export class RedisRateLimitStore {
 ```
 
 Configured on security-sensitive pairing endpoints:
+
 ```typescript
 const companionPairingRateLimiter = createCompanionRateLimiter(
   'companion:rl:pairing',
@@ -219,6 +241,7 @@ companionRouter.post('/pairing/code', companionPairingRateLimiter, ...);
 companionRouter.post('/pairing/claim', companionPairingRateLimiter, ...);
 companionRouter.post('/device/register', companionPairingRateLimiter, ...);
 ```
+
 Routine polling endpoints (`/jobs/status`, `/device/status`) retain `failClosed: false` to allow graceful degradation without causing UI freezes during transient network blips.
 
 ---
@@ -228,6 +251,7 @@ Routine polling endpoints (`/jobs/status`, `/device/status`) retain `failClosed:
 When a workspace is removed from MindVault, all lingering BullMQ queues and jobs must be purged cleanly without throwing unhandled exceptions or disrupting neighboring workspaces.
 
 ### WorkspaceQueueService Implementation
+
 ```typescript
 // apps/api/src/modules/workspace/workspace-queue.service.ts
 export class WorkspaceQueueService {
@@ -258,6 +282,7 @@ export class WorkspaceQueueService {
 ```
 
 Integrated directly into `WorkspaceService.deleteWorkspace`:
+
 ```typescript
 // apps/api/src/modules/workspace/workspace.service.ts
 await this.queueService.cleanWorkspaceQueues(workspaceId);
@@ -269,7 +294,9 @@ await this.prisma.workspace.delete({ where: { id: workspaceId } });
 ## Section F: Test Execution Evidence
 
 ### 1. Monorepo TypeScript Compilation
+
 Executed `pnpm typecheck` across all 5 workspace projects:
+
 ```bash
 $ pnpm --filter @mindvault/shared exec tsc --noEmit && \
   pnpm --filter @mindvault/api exec tsc --noEmit && \
@@ -281,7 +308,9 @@ Exit Code: 0 (0 errors)
 ```
 
 ### 2. Real Redis Integration Test Suite (Zero Mocks)
+
 Targeted local Redis on `127.0.0.1:6379`:
+
 ```bash
 $ npx vitest run tests/real-redis-integration.test.ts
 
@@ -302,6 +331,7 @@ Exit Code:  0
 ```
 
 ### 3. Companion & Security Integration Suites
+
 ```bash
 $ npx vitest run tests/queue-isolation.integration.test.ts \
                  tests/windows-security.integration.test.ts \
@@ -320,6 +350,7 @@ Exit Code:  0
 ```
 
 ### 4. Graph Worker Graceful Shutdown Regression Suite
+
 ```bash
 $ npx vitest run apps/worker/src/modules/graph/__tests__/graph-worker-shutdown.test.ts
 
@@ -331,6 +362,7 @@ Exit Code:  0
 ```
 
 ### 5. Monorepo Vitest Test Summary
+
 ```text
 Total Test Files: 76
 Passed:           76 (100%)

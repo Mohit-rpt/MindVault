@@ -180,7 +180,9 @@ export class CompanionService {
     }
 
     if (!data || data.expiresAt < Date.now()) {
-      throw new Error('Invalid or expired pairing code. Please generate a new code from MindVault.');
+      throw new Error(
+        'Invalid or expired pairing code. Please generate a new code from MindVault.',
+      );
     }
 
     const finalDeviceName = deviceName?.trim() || data.deviceName || 'win-companion';
@@ -291,8 +293,20 @@ export class CompanionService {
    * user's authorized workspaces in PostgreSQL, with queue fallback for testing.
    */
   public async getJobStatus(userId?: string): Promise<JobAvailabilityResponse> {
-    const docCounts: JobCountsBreakdown = { waiting: 0, active: 0, delayed: 0, completed: 0, failed: 0 };
-    const graphCounts: JobCountsBreakdown = { waiting: 0, active: 0, delayed: 0, completed: 0, failed: 0 };
+    const docCounts: JobCountsBreakdown = {
+      waiting: 0,
+      active: 0,
+      delayed: 0,
+      completed: 0,
+      failed: 0,
+    };
+    const graphCounts: JobCountsBreakdown = {
+      waiting: 0,
+      active: 0,
+      delayed: 0,
+      completed: 0,
+      failed: 0,
+    };
 
     let authorizedWorkspaceIds: string[] = [];
     if (userId && prisma.workspaceMember?.findMany) {
@@ -308,44 +322,49 @@ export class CompanionService {
     }
 
     // Tenant Isolation Path: If user workspaces are identified and prisma.document.count is available
-    if (userId && authorizedWorkspaceIds.length > 0 && typeof prisma.document?.count === 'function') {
+    if (
+      userId &&
+      authorizedWorkspaceIds.length > 0 &&
+      typeof prisma.document?.count === 'function'
+    ) {
       try {
-        const [waitingDocs, activeDocs, failedDocs, completedDocs, graphPending] = await Promise.all([
-          prisma.document.count({
-            where: {
-              workspaceId: { in: authorizedWorkspaceIds },
-              status: { in: ['QUEUED', 'UPLOADED'] },
-            },
-          }),
-          prisma.document.count({
-            where: {
-              workspaceId: { in: authorizedWorkspaceIds },
-              status: 'PROCESSING',
-            },
-          }),
-          prisma.document.count({
-            where: {
-              workspaceId: { in: authorizedWorkspaceIds },
-              status: 'FAILED',
-            },
-          }),
-          prisma.document.count({
-            where: {
-              workspaceId: { in: authorizedWorkspaceIds },
-              status: 'COMPLETED',
-            },
-          }),
-          prisma.document.count({
-            where: {
-              workspaceId: { in: authorizedWorkspaceIds },
-              status: 'COMPLETED',
-              metadata: {
-                path: ['graphStatus'],
-                equals: 'QUEUED',
+        const [waitingDocs, activeDocs, failedDocs, completedDocs, graphPending] =
+          await Promise.all([
+            prisma.document.count({
+              where: {
+                workspaceId: { in: authorizedWorkspaceIds },
+                status: { in: ['QUEUED', 'UPLOADED'] },
               },
-            },
-          }),
-        ]);
+            }),
+            prisma.document.count({
+              where: {
+                workspaceId: { in: authorizedWorkspaceIds },
+                status: 'PROCESSING',
+              },
+            }),
+            prisma.document.count({
+              where: {
+                workspaceId: { in: authorizedWorkspaceIds },
+                status: 'FAILED',
+              },
+            }),
+            prisma.document.count({
+              where: {
+                workspaceId: { in: authorizedWorkspaceIds },
+                status: 'COMPLETED',
+              },
+            }),
+            prisma.document.count({
+              where: {
+                workspaceId: { in: authorizedWorkspaceIds },
+                status: 'COMPLETED',
+                metadata: {
+                  path: ['graphStatus'],
+                  equals: 'QUEUED',
+                },
+              },
+            }),
+          ]);
 
         docCounts.waiting = waitingDocs;
         docCounts.active = activeDocs;
@@ -355,7 +374,11 @@ export class CompanionService {
       } catch {
         // Fallback to queue counts if DB count fails
       }
-    } else if (userId && authorizedWorkspaceIds.length === 0 && typeof (prisma as any).workspaceMember?.findMany === 'function') {
+    } else if (
+      userId &&
+      authorizedWorkspaceIds.length === 0 &&
+      typeof (prisma as any).workspaceMember?.findMany === 'function'
+    ) {
       // User has zero workspaces: return strictly empty counts (tenant isolation guarantee)
       docCounts.waiting = 0;
       docCounts.active = 0;

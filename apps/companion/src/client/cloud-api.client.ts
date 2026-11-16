@@ -37,7 +37,10 @@ export interface RegisterDeviceResponse {
 }
 
 export class AuthError extends Error {
-  constructor(message: string, public code = 'AUTH_ERROR') {
+  constructor(
+    message: string,
+    public code = 'AUTH_ERROR',
+  ) {
     super(message);
     this.name = 'AuthError';
   }
@@ -138,10 +141,13 @@ export class CloudApiClient {
     platform = 'win32',
   ): Promise<RegisterDeviceResponse & { workspaceId?: string }> {
     this.logger.info(`Pairing device "${deviceName}" via one-time pairing code...`);
-    return this.request<RegisterDeviceResponse & { workspaceId?: string }>('/api/companion/pairing/claim', {
-      method: 'POST',
-      body: JSON.stringify({ pairingCode, deviceName, platform }),
-    });
+    return this.request<RegisterDeviceResponse & { workspaceId?: string }>(
+      '/api/companion/pairing/claim',
+      {
+        method: 'POST',
+        body: JSON.stringify({ pairingCode, deviceName, platform }),
+      },
+    );
   }
 
   /**

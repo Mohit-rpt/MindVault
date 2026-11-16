@@ -1,6 +1,11 @@
 import os from 'node:os';
 import { Logger } from '../utils/logger.js';
-import { CloudApiClient, AuthError, NetworkError, type JobAvailabilityResponse } from '../client/cloud-api.client.js';
+import {
+  CloudApiClient,
+  AuthError,
+  NetworkError,
+  type JobAvailabilityResponse,
+} from '../client/cloud-api.client.js';
 import { WorkerSupervisor } from '../supervisor/worker-supervisor.js';
 import { IdleController } from './idle-controller.js';
 import { loadStoredToken, clearStoredToken, type StoredDeviceToken } from '../auth/token-store.js';
@@ -38,7 +43,9 @@ export class CompanionController {
     this.supervisor.on('stopped', () => {
       if (this.restartPending) {
         this.restartPending = false;
-        this.logger.info('Restart flag active; immediately re-launching worker for newly arrived jobs...');
+        this.logger.info(
+          'Restart flag active; immediately re-launching worker for newly arrived jobs...',
+        );
         void this.supervisor.start({ workspaceId: this.tokenData?.workspaceId });
       }
     });
@@ -73,7 +80,9 @@ export class CompanionController {
     this.logger.info('  MindVault — Smart Local Windows Companion Starting');
     this.logger.info(`  Cloud API URL:    ${env.CLOUD_API_URL}`);
     this.logger.info(`  Polling Interval: ${env.COMPANION_POLL_INTERVAL_MS}ms`);
-    this.logger.info(`  Idle Timeout:     ${env.WORKER_IDLE_TIMEOUT_MS}ms (${Math.round(env.WORKER_IDLE_TIMEOUT_MS / 60000)} mins)`);
+    this.logger.info(
+      `  Idle Timeout:     ${env.WORKER_IDLE_TIMEOUT_MS}ms (${Math.round(env.WORKER_IDLE_TIMEOUT_MS / 60000)} mins)`,
+    );
     this.logger.info(`  Concurrency:      ${env.WORKER_CONCURRENCY}`);
     this.logger.info('========================================================================');
 
@@ -120,7 +129,9 @@ export class CompanionController {
         this.tokenData = null;
         return;
       }
-      this.logger.warn(`Could not reach cloud API on startup (${err.message}); will retry in polling loop.`);
+      this.logger.warn(
+        `Could not reach cloud API on startup (${err.message}); will retry in polling loop.`,
+      );
     }
 
     // 3. Start Polling Loop
@@ -146,7 +157,7 @@ export class CompanionController {
 
       const workerState = this.supervisor.getState();
       const { hasPendingJobs, hasActiveJobs, summary } = jobStatus;
-      const effectivePending = hasPendingJobs || (summary.delayed > 0);
+      const effectivePending = hasPendingJobs || summary.delayed > 0;
 
       this.logger.debug(
         `Job status: ${summary.waiting} waiting, ${summary.active} active, ${summary.delayed} delayed | Worker: ${workerState}`,
@@ -159,11 +170,15 @@ export class CompanionController {
         );
 
         if (workerState === 'STOPPED') {
-          this.logger.info(`Pending jobs detected (${summary.waiting} waiting, ${summary.delayed} delayed). Starting background worker for workspace ${this.tokenData.workspaceId || 'global'}...`);
+          this.logger.info(
+            `Pending jobs detected (${summary.waiting} waiting, ${summary.delayed} delayed). Starting background worker for workspace ${this.tokenData.workspaceId || 'global'}...`,
+          );
           await this.supervisor.start({ workspaceId: this.tokenData.workspaceId });
         } else if (workerState === 'STOPPING' || workerState === 'DRAINING') {
           this.restartPending = true;
-          this.logger.info('Jobs arrived while worker is stopping/draining; flagged for immediate restart.');
+          this.logger.info(
+            'Jobs arrived while worker is stopping/draining; flagged for immediate restart.',
+          );
         }
       } else if (hasActiveJobs) {
         // Worker is actively processing jobs
@@ -191,7 +206,8 @@ export class CompanionController {
       }
 
       // Network or transient server error: apply backoff
-      this.backoffDelayMs = this.backoffDelayMs === 0 ? 2000 : Math.min(this.backoffDelayMs * 2, 30000);
+      this.backoffDelayMs =
+        this.backoffDelayMs === 0 ? 2000 : Math.min(this.backoffDelayMs * 2, 30000);
       const jitter = Math.round(Math.random() * 1000);
       this.logger.warn(
         `Cloud API poll failed (${err.message}). Retrying in ${Math.round((this.backoffDelayMs + jitter) / 1000)}s...`,
@@ -227,17 +243,21 @@ export class CompanionController {
     this.logger.info('Idle countdown expired. Performing pre-shutdown double-check...');
     try {
       const status = await this.client.getJobStatus(this.tokenData.deviceToken);
-      if (status.hasPendingJobs || status.hasActiveJobs || (status.summary?.delayed > 0)) {
+      if (status.hasPendingJobs || status.hasActiveJobs || status.summary?.delayed > 0) {
         this.logger.info('Work arrived during final idle verification! Cancelling shutdown.');
         this.idleController.onJobActivityDetected('Jobs arrived during final check');
         return;
       }
     } catch (err: any) {
-      this.logger.warn(`Could not verify final queue status (${err.message}); deferring shutdown safely.`);
+      this.logger.warn(
+        `Could not verify final queue status (${err.message}); deferring shutdown safely.`,
+      );
       return;
     }
 
-    this.logger.info('Double-check confirmed zero queue activity. Shutting down worker gracefully.');
+    this.logger.info(
+      'Double-check confirmed zero queue activity. Shutting down worker gracefully.',
+    );
     await this.supervisor.stop('Five-minute idle timeout reached with zero active jobs');
   }
 

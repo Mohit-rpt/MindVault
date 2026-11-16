@@ -50,7 +50,10 @@ export class BullMQDocumentQueue implements IDocumentQueue {
         });
         this.queues.set(queueName, q);
       } catch (err: any) {
-        console.warn(`Failed to connect to BullMQ Redis for queue ${queueName}:`, sanitizeErrorMessage(err.message));
+        console.warn(
+          `Failed to connect to BullMQ Redis for queue ${queueName}:`,
+          sanitizeErrorMessage(err.message),
+        );
       }
     }
     return q || this.defaultQueue || null;
@@ -63,18 +66,24 @@ export class BullMQDocumentQueue implements IDocumentQueue {
       throw new Error('Document processing queue is unavailable (Redis offline or uninitialized)');
     }
     try {
-      await targetQueue.add('process-document', { ...payload, capability }, {
-        jobId: `proc_${payload.documentId}`,
-        attempts: 3,
-        backoff: {
-          type: 'exponential',
-          delay: 1000,
+      await targetQueue.add(
+        'process-document',
+        { ...payload, capability },
+        {
+          jobId: `proc_${payload.documentId}`,
+          attempts: 3,
+          backoff: {
+            type: 'exponential',
+            delay: 1000,
+          },
+          removeOnComplete: true,
+          removeOnFail: false,
         },
-        removeOnComplete: true,
-        removeOnFail: false,
-      });
+      );
     } catch (err: any) {
-      throw new Error(`Failed to enqueue document processing job: ${sanitizeErrorMessage(err.message)}`);
+      throw new Error(
+        `Failed to enqueue document processing job: ${sanitizeErrorMessage(err.message)}`,
+      );
     }
   }
 

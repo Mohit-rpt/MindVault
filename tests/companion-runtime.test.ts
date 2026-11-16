@@ -11,7 +11,11 @@ import {
   clearStoredToken,
   getTokenFilePath,
 } from '../apps/companion/src/auth/token-store.js';
-import { CloudApiClient, AuthError, NetworkError } from '../apps/companion/src/client/cloud-api.client.js';
+import {
+  CloudApiClient,
+  AuthError,
+  NetworkError,
+} from '../apps/companion/src/client/cloud-api.client.js';
 import { WorkerSupervisor } from '../apps/companion/src/supervisor/worker-supervisor.js';
 import { CompanionController } from '../apps/companion/src/controller/companion-controller.js';
 
@@ -515,9 +519,8 @@ describe('MindVault — Local Windows Companion Runtime Suite', () => {
   // =========================================================================
   describe('Embedding Dimension Compatibility (§MOD-01)', () => {
     it('enforces strict 768-dimension constraint and rejects incompatible provider configurations', async () => {
-      const { createEmbeddingProvider } = await import(
-        '../apps/worker/src/modules/ingestion/embeddings/index.js'
-      );
+      const { createEmbeddingProvider } =
+        await import('../apps/worker/src/modules/ingestion/embeddings/index.js');
 
       // Reject non-768 dimensions
       expect(() => {

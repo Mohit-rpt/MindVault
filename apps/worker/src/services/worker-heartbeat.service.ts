@@ -47,7 +47,12 @@ export class WorkerHeartbeatService {
     private environment: string,
     workerId?: string,
   ) {
-    this.workerId = workerId || `win-worker-${os.hostname().toLowerCase().replace(/[^a-z0-9_-]/g, '')}`;
+    this.workerId =
+      workerId ||
+      `win-worker-${os
+        .hostname()
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]/g, '')}`;
   }
 
   public async start(intervalMs = 15000): Promise<void> {
@@ -70,7 +75,9 @@ export class WorkerHeartbeatService {
       }, intervalMs);
       this.timer.unref();
 
-      this.logger.info(`Worker heartbeat started (key: "${WORKER_HEARTBEAT_REDIS_KEY}", interval: ${intervalMs}ms)`);
+      this.logger.info(
+        `Worker heartbeat started (key: "${WORKER_HEARTBEAT_REDIS_KEY}", interval: ${intervalMs}ms)`,
+      );
     } catch (err: any) {
       this.logger.warn(`Could not start heartbeat publisher: ${sanitizeErrorMessage(err.message)}`);
     }

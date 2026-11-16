@@ -60,15 +60,23 @@ describe('MindVault — Production-Ready Upstash Redis & BullMQ Infrastructure S
     });
 
     it('rejects invalid ports (<1 or >65535 or non-numeric)', () => {
-      expect(() => parseRedisUrl('redis://localhost:99999')).toThrow(/Invalid Redis (URL format|port)/);
+      expect(() => parseRedisUrl('redis://localhost:99999')).toThrow(
+        /Invalid Redis (URL format|port)/,
+      );
       expect(() => parseRedisUrl('redis://localhost:0')).toThrow(/Invalid Redis port/);
       expect(() => parseRedisUrl('redis://localhost:-1')).toThrow(/Invalid Redis/);
     });
 
     it('rejects malformed database paths and non-integer database indexes', () => {
-      expect(() => parseRedisUrl('redis://localhost:6379/invalid_db')).toThrow(/Invalid Redis database index/);
-      expect(() => parseRedisUrl('redis://localhost:6379/1/extra/path')).toThrow(/Invalid Redis database index/);
-      expect(() => parseRedisUrl('redis://localhost:6379/-5')).toThrow(/Invalid Redis database index/);
+      expect(() => parseRedisUrl('redis://localhost:6379/invalid_db')).toThrow(
+        /Invalid Redis database index/,
+      );
+      expect(() => parseRedisUrl('redis://localhost:6379/1/extra/path')).toThrow(
+        /Invalid Redis database index/,
+      );
+      expect(() => parseRedisUrl('redis://localhost:6379/-5')).toThrow(
+        /Invalid Redis database index/,
+      );
     });
 
     it('throws descriptive error on empty or invalid Redis URLs', () => {
@@ -83,9 +91,7 @@ describe('MindVault — Production-Ready Upstash Redis & BullMQ Infrastructure S
   // =========================================================================
   describe('2. TLS SNI Configuration', () => {
     it('sets servername (SNI) and rejectUnauthorized for rediss:// endpoints', () => {
-      const opts = parseRedisUrl(
-        'rediss://default:secret@mindvault-demo-1234.upstash.io:6379',
-      );
+      const opts = parseRedisUrl('rediss://default:secret@mindvault-demo-1234.upstash.io:6379');
       expect(opts.tls).toBeDefined();
       expect(opts.tls?.servername).toBe('mindvault-demo-1234.upstash.io');
       expect(opts.tls?.rejectUnauthorized).toBe(true);
@@ -168,10 +174,7 @@ describe('MindVault — Production-Ready Upstash Redis & BullMQ Infrastructure S
     });
 
     it('accepts valid rediss:// in production', () => {
-      const res = validateRedisConfig(
-        'rediss://default:pw@my-vault.upstash.io:6379',
-        'production',
-      );
+      const res = validateRedisConfig('rediss://default:pw@my-vault.upstash.io:6379', 'production');
       expect(res.valid).toBe(true);
       expect(res.error).toBeUndefined();
     });
@@ -182,9 +185,7 @@ describe('MindVault — Production-Ready Upstash Redis & BullMQ Infrastructure S
   // =========================================================================
   describe('5. Zero Credential Leakage & Sanitization', () => {
     it('sanitizeRedisUrl masks password from connection URLs', () => {
-      const redacted = sanitizeRedisUrl(
-        'rediss://default:superSecret123@endpoint.upstash.io:6379',
-      );
+      const redacted = sanitizeRedisUrl('rediss://default:superSecret123@endpoint.upstash.io:6379');
       expect(redacted).not.toContain('superSecret123');
       expect(redacted).toContain('[REDACTED]');
       expect(redacted).toContain('endpoint.upstash.io');
@@ -399,7 +400,9 @@ describe('MindVault — Production-Ready Upstash Redis & BullMQ Infrastructure S
   // =========================================================================
   describe('9. Upstash Redis & Environment Validation Hardening', () => {
     it('validates a correct Upstash rediss:// URL', () => {
-      const res = validateUpstashRedisUrl('rediss://default:pwd@bright-fish-115122.upstash.io:6379');
+      const res = validateUpstashRedisUrl(
+        'rediss://default:pwd@bright-fish-115122.upstash.io:6379',
+      );
       expect(res.valid).toBe(true);
       expect(res.endpoint?.host).toBe('bright-fish-115122.upstash.io');
       expect(res.endpoint?.port).toBe(6379);

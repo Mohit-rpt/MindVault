@@ -63,7 +63,10 @@ function loadEnv(): { duplicateWarning?: string } {
     const idx = trimmed.indexOf('=');
     if (idx !== -1) {
       const key = trimmed.slice(0, idx).trim();
-      const val = trimmed.slice(idx + 1).trim().replace(/^['"]|['"]$/g, '');
+      const val = trimmed
+        .slice(idx + 1)
+        .trim()
+        .replace(/^['"]|['"]$/g, '');
       envParsed[key] = val;
     }
   }
@@ -105,7 +108,9 @@ if (!upstashValidation.valid) {
   console.error('[ FAIL ] Upstash Redis URL configuration failed validation:');
   console.error(`         ${upstashValidation.error}`);
   console.error('         Target URL:', sanitizeRedisUrl(redisUrl));
-  console.error('         Localhost or plain redis:// URLs are rejected for production Upstash testing.\n');
+  console.error(
+    '         Localhost or plain redis:// URLs are rejected for production Upstash testing.\n',
+  );
   if (duplicateWarning) console.error(duplicateWarning);
   console.error('========================================================================');
   process.exit(1);
@@ -218,11 +223,15 @@ async function runSmokeTest(): Promise<void> {
       connection: producerOptions as any,
     });
 
-    const job = await testQueue.add('smoke-job', { smokeId, test: true }, {
-      jobId: `smoke_job_${smokeId}`,
-      removeOnComplete: true,
-      removeOnFail: true,
-    });
+    const job = await testQueue.add(
+      'smoke-job',
+      { smokeId, test: true },
+      {
+        jobId: `smoke_job_${smokeId}`,
+        removeOnComplete: true,
+        removeOnFail: true,
+      },
+    );
 
     const retrievedJob = await testQueue.getJob(job.id!);
     if (!retrievedJob) {
@@ -236,7 +245,9 @@ async function runSmokeTest(): Promise<void> {
 
     console.log('\n========================================================================');
     console.log('RESULT: REDIS INFRASTRUCTURE FULLY VERIFIED');
-    console.log('All 5 diagnostic probes passed. The Redis endpoint is ready for production BullMQ.');
+    console.log(
+      'All 5 diagnostic probes passed. The Redis endpoint is ready for production BullMQ.',
+    );
     console.log('========================================================================\n');
   } catch (err: any) {
     hasErrors = true;
@@ -244,7 +255,9 @@ async function runSmokeTest(): Promise<void> {
     console.error(`           ${sanitizeErrorMessage(err.message || String(err))}`);
     console.log('\n========================================================================');
     console.log('RESULT: REDIS SMOKE TEST FAILED');
-    console.log('Check the error details above and verify host, port, credentials, and network connectivity.');
+    console.log(
+      'Check the error details above and verify host, port, credentials, and network connectivity.',
+    );
     console.log('========================================================================\n');
   } finally {
     // Safe cleanup of any leftover smoke keys without ever calling FLUSHDB

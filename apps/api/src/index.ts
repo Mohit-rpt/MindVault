@@ -34,10 +34,7 @@ async function shutdown(signal: string): Promise<void> {
 
   // Close BullMQ producer queues
   try {
-    await Promise.allSettled([
-      documentQueue.close(),
-      graphExtractionQueue.close(),
-    ]);
+    await Promise.allSettled([documentQueue.close(), graphExtractionQueue.close()]);
     console.log('✅ BullMQ producer queues closed.');
   } catch (err) {
     console.warn('⚠️ Error closing BullMQ queues during shutdown:', err);

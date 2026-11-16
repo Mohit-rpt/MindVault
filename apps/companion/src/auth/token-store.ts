@@ -64,7 +64,9 @@ export function dpapiProtect(plaintext: string): string {
     },
   );
   if (res.status !== 0 || res.error) {
-    throw new Error(`DPAPI encryption failed: ${res.stderr || res.error?.message || 'Unknown error'}`);
+    throw new Error(
+      `DPAPI encryption failed: ${res.stderr || res.error?.message || 'Unknown error'}`,
+    );
   }
   return res.stdout.trim();
 }
@@ -81,7 +83,9 @@ export function dpapiUnprotect(ciphertextB64: string): string {
     },
   );
   if (res.status !== 0 || res.error) {
-    throw new Error(`DPAPI decryption failed: ${res.stderr || res.error?.message || 'Unknown error'}`);
+    throw new Error(
+      `DPAPI decryption failed: ${res.stderr || res.error?.message || 'Unknown error'}`,
+    );
   }
   return Buffer.from(res.stdout.trim(), 'base64').toString('utf-8');
 }
@@ -101,17 +105,21 @@ export interface TokenStoreOptions {
 /**
  * Tightens Windows NTFS file permissions so only the current user and SYSTEM have access.
  */
-export function restrictWindowsPermissions(targetPath: string, isDirectory = false, forceReal = false): void {
+export function restrictWindowsPermissions(
+  targetPath: string,
+  isDirectory = false,
+  forceReal = false,
+): void {
   if (process.platform !== 'win32') return;
-  if (process.env.NODE_ENV === 'test' && !forceReal && process.env.FORCE_REAL_DPAPI !== 'true') return;
+  if (process.env.NODE_ENV === 'test' && !forceReal && process.env.FORCE_REAL_DPAPI !== 'true')
+    return;
   try {
     const username = process.env.USERNAME || os.userInfo().username;
     const perm = isDirectory ? `${username}:(OI)(CI)F` : `${username}:F`;
-    cp.execFileSync(
-      'icacls.exe',
-      [targetPath, '/grant', perm],
-      { windowsHide: true, stdio: 'ignore' },
-    );
+    cp.execFileSync('icacls.exe', [targetPath, '/grant', perm], {
+      windowsHide: true,
+      stdio: 'ignore',
+    });
   } catch {
     // Non-blocking ACL enhancement
   }
@@ -132,7 +140,9 @@ export function saveStoredToken(token: StoredDeviceToken, options?: TokenStoreOp
     const plaintext = JSON.stringify(token);
     const isWindows =
       process.platform === 'win32' &&
-      (options?.forceRealDpapi || process.env.FORCE_REAL_DPAPI === 'true' || process.env.NODE_ENV !== 'test');
+      (options?.forceRealDpapi ||
+        process.env.FORCE_REAL_DPAPI === 'true' ||
+        process.env.NODE_ENV !== 'test');
 
     let filePayload: string;
 
@@ -163,7 +173,9 @@ export function saveStoredToken(token: StoredDeviceToken, options?: TokenStoreOp
 
     fs.writeFileSync(filePath, filePayload, 'utf-8');
     restrictWindowsPermissions(filePath, false, options?.forceRealDpapi);
-    logger.info(`Device token securely persisted using ${isWindows ? 'Windows DPAPI' : 'AES-GCM'} at ${filePath}`);
+    logger.info(
+      `Device token securely persisted using ${isWindows ? 'Windows DPAPI' : 'AES-GCM'} at ${filePath}`,
+    );
   } catch (err: any) {
     logger.error(`Failed to securely save device token: ${err.message}`);
     throw err;

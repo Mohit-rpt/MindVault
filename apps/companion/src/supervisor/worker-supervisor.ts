@@ -78,7 +78,8 @@ export class WorkerSupervisor extends EventEmitter {
     this.stateMachine.transition('STARTING', 'Initiating background worker child process');
     this.isIntentionallyStopping = false;
 
-    const targetWorkspaceId = options?.workspaceId || this.workspaceId || process.env.AUTHORIZED_WORKSPACE_ID;
+    const targetWorkspaceId =
+      options?.workspaceId || this.workspaceId || process.env.AUTHORIZED_WORKSPACE_ID;
     if (targetWorkspaceId) {
       this.workspaceId = targetWorkspaceId;
     }
@@ -94,12 +95,16 @@ export class WorkerSupervisor extends EventEmitter {
       if (fs.existsSync(distEntry)) {
         command = process.execPath; // node.exe
         args = [distEntry];
-        this.logger.info(`Starting worker using compiled distribution bundle (${distEntry}) [workspace: ${targetWorkspaceId || 'global'}]`);
+        this.logger.info(
+          `Starting worker using compiled distribution bundle (${distEntry}) [workspace: ${targetWorkspaceId || 'global'}]`,
+        );
       } else {
         // Fallback to tsx for development execution
         command = process.platform === 'win32' ? 'cmd.exe' : 'pnpm';
         args = process.platform === 'win32' ? ['/c', 'pnpm', 'worker:dev'] : ['worker:dev'];
-        this.logger.info(`Distribution bundle not found; running worker via tsx watch [workspace: ${targetWorkspaceId || 'global'}]`);
+        this.logger.info(
+          `Distribution bundle not found; running worker via tsx watch [workspace: ${targetWorkspaceId || 'global'}]`,
+        );
       }
 
       // 2. Child environment inheritance
@@ -176,14 +181,20 @@ export class WorkerSupervisor extends EventEmitter {
         this.childProcess?.on('message', onMessage);
 
         const checkInterval = setInterval(() => {
-          if (!this.childProcess || this.childProcess.killed || this.childProcess.exitCode !== null) {
+          if (
+            !this.childProcess ||
+            this.childProcess.killed ||
+            this.childProcess.exitCode !== null
+          ) {
             settle(false);
           }
         }, 200);
 
         // Fail startup if no readiness signal within startupTimeoutMs
         this.startupTimer = setTimeout(() => {
-          this.logger.warn(`Startup timeout (${this.startupTimeoutMs}ms) reached without readiness signal`);
+          this.logger.warn(
+            `Startup timeout (${this.startupTimeoutMs}ms) reached without readiness signal`,
+          );
           settle(false);
         }, this.startupTimeoutMs);
       });
@@ -242,7 +253,9 @@ export class WorkerSupervisor extends EventEmitter {
       // 2. Set force-kill timeout if graceful shutdown exceeds grace window
       const forceKillTimer = setTimeout(() => {
         if (!resolved && this.childProcess && this.childProcess.exitCode === null) {
-          this.logger.warn(`Worker PID ${pid} did not exit in ${this.shutdownGraceMs}ms; force-terminating...`);
+          this.logger.warn(
+            `Worker PID ${pid} did not exit in ${this.shutdownGraceMs}ms; force-terminating...`,
+          );
           try {
             if (process.platform === 'win32' && pid) {
               execSync(`taskkill /pid ${pid} /T /F`, { stdio: 'ignore' });

@@ -297,7 +297,10 @@ describe('MindVault Cloud API — Companion Device & Job Status Endpoints', () =
   it('rejects device status check with unknown token (HTTP 401 INVALID_DEVICE_TOKEN)', async () => {
     const res = await request(app)
       .get('/api/companion/device/status')
-      .set('Authorization', 'Bearer mvd_invalid_nonexistent_token_00000000000000000000000000000000');
+      .set(
+        'Authorization',
+        'Bearer mvd_invalid_nonexistent_token_00000000000000000000000000000000',
+      );
 
     expect(res.status).toBe(401);
     expect(res.body.error.code).toBe('INVALID_DEVICE_TOKEN');

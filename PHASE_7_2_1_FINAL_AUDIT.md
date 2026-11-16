@@ -12,6 +12,7 @@
 During the Phase 7.2 production audit, a critical queue mismatch was hypothesized between BullMQ job producers and Cloud Background Workers. Specifically, producers enqueued document and graph extraction jobs into capability- and workspace-partitioned queues (e.g. `document-processing--ws_alpha_test--cloud`), while Cloud Workers were suspected of subscribing to an unpartitioned or undefined queue (e.g. `document-processing--cloud`).
 
 Through strict read-only repository inspection, **the defect was confirmed with mathematical precision**:
+
 - Producers called `toBullQueueName(getDocumentQueueName(job.workspaceId, capability))`, generating:
   - Document: `document-processing--{workspaceId}--{capability}`
   - Graph: `graph-extraction--{workspaceId}--{capability}`
@@ -27,7 +28,9 @@ All 8 integration tests covering the 9 verification dimensions passed with 100% 
 ## 1. Root Cause Analysis (Proven Mismatch)
 
 ### 1.1 The Producer Queue Topology
+
 BullMQ producers in `@mindvault/api` and `@mindvault/worker` utilize helper utilities in `packages/shared/src/redis.ts`:
+
 ```typescript
 export function getDocumentQueueName(workspaceId?: string, capability?: 'local' | 'cloud'): string {
   const parts = ['document-processing'];
@@ -42,13 +45,16 @@ export function toBullQueueName(colonQueueName: string): string {
 ```
 
 When an upload occurred in `DocumentService.uploadDocument` or `BullMQDocumentQueue.enqueue`:
+
 - Workspace `ws_alpha_test` with capability `cloud` produced BullMQ queue:
   **`document-processing--ws_alpha_test--cloud`**
 - Workspace `ws_beta_test` with capability `cloud` produced BullMQ queue:
   **`document-processing--ws_beta_test--cloud`**
 
 ### 1.2 The Defective Worker Subscription
+
 Before remediation:
+
 - In `apps/worker/src/worker.ts`:
   ```typescript
   const authorizedWorkspaceId = process.env.AUTHORIZED_WORKSPACE_ID;
@@ -64,6 +70,7 @@ Before remediation:
   **`document-processing--cloud`**
 
 ### 1.3 Mismatch Impact
+
 ```
 [Producer Enqueues]   --> Redis Queue: "bull:document-processing--ws_alpha_test--cloud:wait"
 [Cloud Worker Listens] <-- Redis Queue: "bull:document-processing--cloud:wait"
@@ -71,7 +78,9 @@ Before remediation:
 ```
 
 ### 1.4 Secondary Defect: Graph Queue Capability Drop
+
 In `apps/worker/src/modules/ingestion/pipeline.ts` (line 327):
+
 ```typescript
 // BEFORE:
 await this.graphQueue.enqueue({
@@ -81,6 +90,7 @@ await this.graphQueue.enqueue({
   chunkManifestHash,
 });
 ```
+
 `this.graphQueue.enqueue` in `BullMQWorkerGraphQueue` accepted an optional `capability?: 'local' | 'cloud'`. Because `pipeline.ts` omitted it, graph jobs defaulted to `graph-extraction:{workspaceId}`, completely dropping the `--cloud` or `--local` partition and preventing capability isolation.
 
 ---
@@ -88,6 +98,7 @@ await this.graphQueue.enqueue({
 ## 2. Files Inspected & Modified
 
 ### 2.1 Files Inspected
+
 - `packages/shared/src/redis.ts` (Queue name formatting and safe translation)
 - `packages/shared/src/types.ts` (Job payloads, worker types, queue contracts)
 - `apps/api/src/modules/document/document.service.ts` (Ingestion trigger and queue routing)
@@ -102,20 +113,21 @@ await this.graphQueue.enqueue({
 
 ### 2.2 Files Modified
 
-| File | Nature of Changes |
-| :--- | :--- |
-| `apps/worker/src/worker.ts` | Implemented multi-workspace resolution, `registeredWorkspaces` Set, `bullWorkersByQueue` Map, dynamic `registerWorkspace()`, `unregisterWorkspace()`, database auto-discovery for cloud mode, periodic 30s discovery sweep, and strict input validation. |
-| `apps/worker/src/modules/graph/worker/graph-extraction.worker.ts` | Mirror implementation for graph extraction: multi-workspace resolution, per-workspace `Worker` pool, dynamic registration, database discovery sweep, and clean graceful shutdown. |
-| `apps/worker/src/modules/ingestion/pipeline.ts` | Fixed graph queue dispatch at line 327 to propagate `capability: docCapability` and `requiresLocal: job.requiresLocal ?? false`. |
-| `apps/api/src/modules/document/document.queue.ts` | Updated Redis connection resolution to respect `process.env.REDIS_URL || env.REDIS_URL` dynamically for seamless test & deployment overrides. |
-| `apps/worker/src/lib/graph-queue.ts` | Updated Redis connection resolution to respect `process.env.REDIS_URL || env.REDIS_URL` dynamically. |
-| `tests/cloud-worker-multi-workspace.test.ts` | **New comprehensive integration test suite** verifying all 9 audit requirements against real Redis. |
+| File                                                              | Nature of Changes                                                                                                                                                                                                                                        |
+| :---------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/worker/src/worker.ts`                                       | Implemented multi-workspace resolution, `registeredWorkspaces` Set, `bullWorkersByQueue` Map, dynamic `registerWorkspace()`, `unregisterWorkspace()`, database auto-discovery for cloud mode, periodic 30s discovery sweep, and strict input validation. |
+| `apps/worker/src/modules/graph/worker/graph-extraction.worker.ts` | Mirror implementation for graph extraction: multi-workspace resolution, per-workspace `Worker` pool, dynamic registration, database discovery sweep, and clean graceful shutdown.                                                                        |
+| `apps/worker/src/modules/ingestion/pipeline.ts`                   | Fixed graph queue dispatch at line 327 to propagate `capability: docCapability` and `requiresLocal: job.requiresLocal ?? false`.                                                                                                                         |
+| `apps/api/src/modules/document/document.queue.ts`                 | Updated Redis connection resolution to respect `process.env.REDIS_URL                                                                                                                                                                                    |     | env.REDIS_URL` dynamically for seamless test & deployment overrides. |
+| `apps/worker/src/lib/graph-queue.ts`                              | Updated Redis connection resolution to respect `process.env.REDIS_URL                                                                                                                                                                                    |     | env.REDIS_URL` dynamically.                                          |
+| `tests/cloud-worker-multi-workspace.test.ts`                      | **New comprehensive integration test suite** verifying all 9 audit requirements against real Redis.                                                                                                                                                      |
 
 ---
 
 ## 3. Architecture Selected & Operational Justification
 
 ### 3.1 Architecture: Dynamic Multi-Workspace Discovery & Per-Workspace Worker Pool
+
 To preserve strict workspace isolation and multi-tenant fairness without breaking queue-level partitioning, we implemented:
 
 1. **Explicit Multi-Workspace Resolution:**
@@ -139,20 +151,21 @@ To preserve strict workspace isolation and multi-tenant fairness without breakin
 
 The following table provides the verified queue names produced by `@mindvault/shared`, `@mindvault/api`, and `@mindvault/worker`:
 
-| Capability / Workload | Target Workspace | Exact Producer Queue Name | Exact Worker Subscription Queue Name | Match Status |
-| :--- | :--- | :--- | :--- | :--- |
-| **Document (Cloud)** | `ws_alpha_test` | `document-processing--ws_alpha_test--cloud` | `document-processing--ws_alpha_test--cloud` | **IDENTICAL** |
-| **Document (Cloud)** | `ws_beta_test` | `document-processing--ws_beta_test--cloud` | `document-processing--ws_beta_test--cloud` | **IDENTICAL** |
-| **Document (Local)** | `ws_alpha_test` | `document-processing--ws_alpha_test--local` | `document-processing--ws_alpha_test--local` | **IDENTICAL** |
-| **Graph (Cloud)** | `ws_alpha_test` | `graph-extraction--ws_alpha_test--cloud` | `graph-extraction--ws_alpha_test--cloud` | **IDENTICAL** |
-| **Graph (Cloud)** | `ws_beta_test` | `graph-extraction--ws_beta_test--cloud` | `graph-extraction--ws_beta_test--cloud` | **IDENTICAL** |
-| **Graph (Local)** | `ws_alpha_test` | `graph-extraction--ws_alpha_test--local` | `graph-extraction--ws_alpha_test--local` | **IDENTICAL** |
+| Capability / Workload | Target Workspace | Exact Producer Queue Name                   | Exact Worker Subscription Queue Name        | Match Status  |
+| :-------------------- | :--------------- | :------------------------------------------ | :------------------------------------------ | :------------ |
+| **Document (Cloud)**  | `ws_alpha_test`  | `document-processing--ws_alpha_test--cloud` | `document-processing--ws_alpha_test--cloud` | **IDENTICAL** |
+| **Document (Cloud)**  | `ws_beta_test`   | `document-processing--ws_beta_test--cloud`  | `document-processing--ws_beta_test--cloud`  | **IDENTICAL** |
+| **Document (Local)**  | `ws_alpha_test`  | `document-processing--ws_alpha_test--local` | `document-processing--ws_alpha_test--local` | **IDENTICAL** |
+| **Graph (Cloud)**     | `ws_alpha_test`  | `graph-extraction--ws_alpha_test--cloud`    | `graph-extraction--ws_alpha_test--cloud`    | **IDENTICAL** |
+| **Graph (Cloud)**     | `ws_beta_test`   | `graph-extraction--ws_beta_test--cloud`     | `graph-extraction--ws_beta_test--cloud`     | **IDENTICAL** |
+| **Graph (Local)**     | `ws_alpha_test`  | `graph-extraction--ws_alpha_test--local`    | `graph-extraction--ws_alpha_test--local`    | **IDENTICAL** |
 
 ---
 
 ## 5. Automated Verification Test Results
 
 ### 5.1 Focused Suite: `tests/cloud-worker-multi-workspace.test.ts`
+
 All 9 verification areas were tested against a live Redis instance (`127.0.0.1:6379`):
 
 ```
@@ -179,6 +192,7 @@ All 9 verification areas were tested against a live Redis instance (`127.0.0.1:6
 ```
 
 ### 5.2 Monorepo Regression Test Suite
+
 All related worker and integration test suites were executed concurrently:
 
 ```
@@ -207,6 +221,7 @@ All related worker and integration test suites were executed concurrently:
 ```
 
 ### 5.3 Static Type Checking
+
 ```
 $ pnpm typecheck
 $ pnpm --filter @mindvault/shared exec tsc --noEmit && \
@@ -221,12 +236,12 @@ Exit Code: 0 (Zero errors)
 
 ## 6. Operational Risk Assessment
 
-| Risk Category | Pre-Remediation State | Post-Remediation State | Residual Risk | Mitigating Control |
-| :--- | :--- | :--- | :--- | :--- |
-| **Queue Starvation** | Cloud worker listened to `document-processing--cloud`; all tenant jobs languished in wait state. | Cloud worker dynamically spawns listeners for all tenant workspaces (`document-processing--{ws}--cloud`). | **None** | Automatic 30s discovery sweep + manual `registerWorkspace` hook. |
-| **Tenant Cross-Contamination** | Local workers could theoretically encounter foreign jobs if queues collided. | Workspaces strictly partitioned by name (`--{workspaceId}--`). Local worker for Workspace A is physically connected only to Workspace A queues. | **None** | Validated in Section 7 of verification suite. |
-| **Worker Over-Subscription** | In a massive cluster with 10,000 workspaces, 10,000 BullMQ workers could exceed Redis connection limits. | In high-scale deployments, workers can either partition workspace sets via `AUTHORIZED_WORKSPACE_IDS` or use shared connection pools. | **Low** | Configurable workspace partitioning; BullMQ Redis connection sharing. |
-| **Job Capability Downgrade** | Ingestion pipeline neglected capability flag during graph queue dispatch. | `pipeline.ts` explicitly forwards `capability` and `requiresLocal` to `BullMQWorkerGraphQueue`. | **None** | Verified in Test 5 of verification suite. |
+| Risk Category                  | Pre-Remediation State                                                                                    | Post-Remediation State                                                                                                                          | Residual Risk | Mitigating Control                                                    |
+| :----------------------------- | :------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------- | :------------ | :-------------------------------------------------------------------- |
+| **Queue Starvation**           | Cloud worker listened to `document-processing--cloud`; all tenant jobs languished in wait state.         | Cloud worker dynamically spawns listeners for all tenant workspaces (`document-processing--{ws}--cloud`).                                       | **None**      | Automatic 30s discovery sweep + manual `registerWorkspace` hook.      |
+| **Tenant Cross-Contamination** | Local workers could theoretically encounter foreign jobs if queues collided.                             | Workspaces strictly partitioned by name (`--{workspaceId}--`). Local worker for Workspace A is physically connected only to Workspace A queues. | **None**      | Validated in Section 7 of verification suite.                         |
+| **Worker Over-Subscription**   | In a massive cluster with 10,000 workspaces, 10,000 BullMQ workers could exceed Redis connection limits. | In high-scale deployments, workers can either partition workspace sets via `AUTHORIZED_WORKSPACE_IDS` or use shared connection pools.           | **Low**       | Configurable workspace partitioning; BullMQ Redis connection sharing. |
+| **Job Capability Downgrade**   | Ingestion pipeline neglected capability flag during graph queue dispatch.                                | `pipeline.ts` explicitly forwards `capability` and `requiresLocal` to `BullMQWorkerGraphQueue`.                                                 | **None**      | Verified in Test 5 of verification suite.                             |
 
 ---
 

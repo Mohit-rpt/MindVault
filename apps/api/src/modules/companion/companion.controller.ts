@@ -69,11 +69,7 @@ export class CompanionController {
       }
 
       const { workspaceId, deviceName } = parsed.data;
-      const result = await companionService.createPairingCode(
-        req.user.id,
-        workspaceId,
-        deviceName,
-      );
+      const result = await companionService.createPairingCode(req.user.id, workspaceId, deviceName);
 
       res.status(201).json({
         success: true,
@@ -125,7 +121,10 @@ export class CompanionController {
       const isInvalid = err.message?.includes('Invalid or expired');
       res.status(isInvalid ? 400 : 500).json({
         success: false,
-        error: { code: isInvalid ? 'INVALID_PAIRING_CODE' : 'INTERNAL_ERROR', message: err.message },
+        error: {
+          code: isInvalid ? 'INVALID_PAIRING_CODE' : 'INTERNAL_ERROR',
+          message: err.message,
+        },
         meta: { timestamp: new Date().toISOString() },
       });
     }
@@ -160,11 +159,7 @@ export class CompanionController {
       }
 
       const { deviceName, platform } = parsed.data;
-      const registration = await companionService.registerDevice(
-        req.user.id,
-        deviceName,
-        platform,
-      );
+      const registration = await companionService.registerDevice(req.user.id, deviceName, platform);
 
       res.status(201).json({
         success: true,

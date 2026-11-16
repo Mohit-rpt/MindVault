@@ -22,7 +22,7 @@ Every synthesized answer is deterministically validated against retrieved source
 │ Bounded Chat Memory   │ Dual-tier memory (sliding turn window + rolling summaries)       │
 │ Provider Agnostic     │ Local private Ollama (qwen3) + Cloud Google Gemini (Flash)      │
 │ Tenant Isolation      │ Cryptographic workspace scoping enforced at the SQL query level │
-│ Tested & Verified     │ 795 tests passing across 68 test files (100% pass rate)         │
+│ Tested & Verified     │ 921 tests passing across 77 test files (100% pass rate)         │
 └───────────────────────┴─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -175,7 +175,7 @@ Follow this sequence to set up MindVault in your local environment.
 ### Step 1: Clone and Install Dependencies
 
 ```bash
-git clone https://github.com/mohitgoyal/MindVault.git
+git clone https://github.com/Mohit-rpt/MindVault.git
 cd MindVault
 pnpm install
 ```
@@ -454,7 +454,7 @@ MindVault includes automated quantitative evaluation harnesses covering informat
 | **Prompt Injection Containment**    | `pnpm rag:evaluate`          | Containment Rate %                   |       **100.0%**       | Adversarial instructions isolated via structural delimiters                         |
 | **Conversational Memory & Context** | `pnpm conversation:evaluate` | Passed Scenarios                     |   **15 / 15 (100%)**   | Evaluates pronoun resolution, ellipticals, memory, and abort recovery in 251ms      |
 | **Knowledge Graph Traversal**       | `pnpm graph:evaluate`        | Path Recall & Evidence %             |   **15 / 15 (100%)**   | Evaluates multi-hop path recall, entity resolution, and evidence provenance in 22ms |
-| **Monorepo Test Suite**             | `pnpm test`                  | Total Tests Passing                  |  **795 / 795 (100%)**  | Comprehensive unit, integration, and security tests across 68 test files            |
+| **Monorepo Test Suite**             | `pnpm test`                  | Total Tests Passing                  |  **921 / 921 (100%)**  | Comprehensive unit, integration, and security tests across 77 test files            |
 
 ### Running Evaluation Benchmarks
 
@@ -509,7 +509,7 @@ MindVault includes a comprehensive, verified presenter guide for live evaluation
 ## 14. Development & Quality Commands
 
 ```bash
-# Run all 795 unit, integration, and security tests across monorepo
+# Run all 921 unit, integration, and security tests across monorepo
 pnpm test
 
 # Run preflight environment & service readiness verification CLI
@@ -570,7 +570,7 @@ To preserve presentation integrity, understand what is implemented versus what i
 Contributions are welcome. Please follow these principles:
 
 1. Ensure all code changes maintain TypeScript strict mode.
-2. Run `pnpm test` to ensure zero regressions across the 795 existing tests.
+2. Run `pnpm test` to ensure zero regressions across the 921 existing tests.
 3. Run `pnpm typecheck`, `pnpm lint`, and `pnpm format:check` before submitting pull requests.
 
 ---

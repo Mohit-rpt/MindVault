@@ -1,12 +1,6 @@
 import { Logger } from '../utils/logger.js';
 
-export type WorkerState =
-  | 'STOPPED'
-  | 'STARTING'
-  | 'RUNNING'
-  | 'DRAINING'
-  | 'STOPPING'
-  | 'FAILED';
+export type WorkerState = 'STOPPED' | 'STARTING' | 'RUNNING' | 'DRAINING' | 'STOPPING' | 'FAILED';
 
 export interface StateTransitionRecord {
   from: WorkerState;

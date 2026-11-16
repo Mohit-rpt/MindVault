@@ -38,8 +38,7 @@ const envSchema = z.object({
         return true;
       },
       {
-        message:
-          'REDIS_URL is required in production and must start with rediss:// (native TLS)',
+        message: 'REDIS_URL is required in production and must start with rediss:// (native TLS)',
       },
     ),
 

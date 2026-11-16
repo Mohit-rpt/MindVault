@@ -25,10 +25,7 @@ vi.mock('../apps/api/src/lib/prisma.js', () => {
   };
 });
 
-import {
-  getDocumentQueueName,
-  getGraphQueueName,
-} from '@mindvault/shared';
+import { getDocumentQueueName, getGraphQueueName } from '@mindvault/shared';
 import {
   BullMQDocumentQueue,
   InMemoryDocumentQueue,
@@ -188,7 +185,11 @@ describe('MindVault — Phase 7: Multi-Tenant Queue Isolation & Concurrency Suit
   describe('2. Foreign Job Safety & Re-routing (§ARC-01)', () => {
     const mockStorage = { exists: vi.fn(), read: vi.fn(), save: vi.fn() };
     const mockEmbedding = { generateEmbeddings: vi.fn(), getDimension: vi.fn() };
-    const mockDb = { findDocumentById: vi.fn(), updateDocument: vi.fn(), createDocumentChunks: vi.fn() };
+    const mockDb = {
+      findDocumentById: vi.fn(),
+      updateDocument: vi.fn(),
+      createDocumentChunks: vi.fn(),
+    };
 
     it('DocumentIngestionPipeline safely reroutes foreign jobs rather than failing them', async () => {
       const originalAuthorized = process.env.AUTHORIZED_WORKSPACE_ID;
@@ -286,7 +287,11 @@ describe('MindVault — Phase 7: Multi-Tenant Queue Isolation & Concurrency Suit
   describe('3. Worker Type Capability Routing (§OPS-01)', () => {
     const mockStorage = { exists: vi.fn(), read: vi.fn(), save: vi.fn() };
     const mockEmbedding = { generateEmbeddings: vi.fn(), getDimension: vi.fn() };
-    const mockDb = { findDocumentById: vi.fn(), updateDocument: vi.fn(), createDocumentChunks: vi.fn() };
+    const mockDb = {
+      findDocumentById: vi.fn(),
+      updateDocument: vi.fn(),
+      createDocumentChunks: vi.fn(),
+    };
 
     it('DocumentIngestionPipeline defers or reroutes local-required jobs when running as cloud worker', async () => {
       const originalWorkerType = process.env.WORKER_TYPE;
@@ -380,12 +385,10 @@ describe('MindVault — Phase 7: Multi-Tenant Queue Isolation & Concurrency Suit
 
       // Simulate 10 simultaneous claim attempts from 10 client threads
       const attempts = Array.from({ length: 10 }, (_, i) =>
-        companionService
-          .claimPairingCode(pairingCode, `Worker-Machine-${i + 1}`, 'win32')
-          .then(
-            (result) => ({ success: true, result }),
-            (error) => ({ success: false, error: error.message }),
-          ),
+        companionService.claimPairingCode(pairingCode, `Worker-Machine-${i + 1}`, 'win32').then(
+          (result) => ({ success: true, result }),
+          (error) => ({ success: false, error: error.message }),
+        ),
       );
 
       const results = await Promise.all(attempts);

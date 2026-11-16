@@ -13,6 +13,7 @@
 A comprehensive, forensic audit and verification of the entire MindVault codebase has been conducted across all workspaces (`apps/api`, `apps/worker`, `apps/companion`, `packages/shared`, `apps/web`), Prisma database migrations, BullMQ/Redis infrastructure, Windows 11 runtime integration, and Git repository state.
 
 ### Key Audit Conclusions
+
 1. **Repository Structural Health:** **VERIFIED**. Monorepo workspace linking (`pnpm-workspace.yaml`), TypeScript configurations, build targets (`pnpm build`), and test harness configurations (`vitest.config.ts`) compile and build cleanly with 0 errors across all 5 workspaces.
 2. **Phase 7.2.1 Completion:** **VERIFIED**. The producer-consumer queue naming mismatch has been completely eradicated. Dynamic multi-workspace queue discovery in `WorkerService` and `GraphExtractionWorker` strictly enforces tenant isolation and eliminates the `undefined` workspace ID vulnerability. All jobs enqueued with `capability: 'cloud'` are dynamically consumed from workspace-partitioned queues (`document-processing--{workspaceId}--cloud`).
 3. **Companion Application Completeness:** **VERIFIED**. `apps/companion/` implements an enterprise-grade Windows process supervisor, Windows DPAPI (`ProtectedData::Protect`, `CurrentUser`) secret storage with stdin/stdout piping, single-instance PID locking (`SingleInstanceLock`), idle shutdown coordination (5-minute countdown on zero queue activity to preserve local CPU/RAM), and one-time code pairing (`MVP-XXXX-XXXX`).
@@ -33,6 +34,7 @@ Git Tree Operation: Read-only inspection; zero destructive commands executed.
 ```
 
 ### Commit History Reference (Recent 5)
+
 - `c5c877a` docs: modernize README and document public release readiness
 - `c05aa87` feat(demo): add deterministic seed corpus, preflight verification CLI, and presenter walkthrough guide
 - `40658ff` feat(graph): implement Phase 6.5-6.9 GraphRAG retrieval, recursive traversal, and interactive graph explorer
@@ -43,73 +45,74 @@ Git Tree Operation: Read-only inspection; zero destructive commands executed.
 
 ## 3. Complete File Inventory & Implementation Phase Classification
 
-| File | Change Type | Implementation Phase | Purpose | Dependencies | Risk Assessment |
-| :--- | :---: | :--- | :--- | :--- | :---: |
-| `prisma/schema.prisma` | Modified | Database & Migrations | Adds `companionDevices` relation to `User` and `CompanionDevice` model | Prisma, PostgreSQL | Low (Additive) |
-| `prisma/migrations/20261114000000_add_companion_devices/migration.sql` | Untracked | Database & Migrations | SQL DDL creating `companion_devices` table, indexes, and FK | PostgreSQL | Low (Applied) |
-| `packages/shared/src/redis.ts` | Untracked | Redis Infrastructure | TLS options, URL parsing, sanitizers, endpoint extraction | ioredis, BullMQ | Low (Shared utility) |
-| `packages/shared/src/index.ts` | Modified | Redis Infrastructure | Exports `redis.js` from `@mindvault/shared` | `@mindvault/shared` | Low |
-| `packages/shared/src/types.ts` | Modified | Redis & Queue Architecture | Queue naming helpers (`toBullQueueName`, `getDocumentQueueName`), capability payload flags | `@mindvault/shared` | Low (Core contract) |
-| `apps/worker/src/worker.ts` | Modified | Phase 7.2.1 Cloud Worker | Dynamic multi-workspace discovery, worker pool, periodic 30s sweep, graceful stop | BullMQ, Prisma, Redis | Low (Remediated) |
-| `apps/worker/src/modules/graph/worker/graph-extraction.worker.ts` | Modified | Phase 7.2.1 Cloud Worker | Multi-workspace graph queue listener pool, dynamic registration, graceful stop | BullMQ, Prisma, Redis | Low (Remediated) |
-| `apps/worker/src/modules/ingestion/pipeline.ts` | Modified | Phase 7.2.1 Cloud Worker | Step 9 graph queue enqueue: forwards `capability` and `requiresLocal` | GraphQueue | Low (Fixes drop) |
-| `apps/worker/src/lib/graph-queue.ts` | Modified | Phase 7.2.1 Cloud Worker | BullMQWorkerGraphQueue multi-workspace getQueue/enqueue with capability routing | BullMQ, Redis | Low |
-| `apps/worker/src/modules/ingestion/embeddings/index.ts` | Modified | Worker Ingestion | Strict 768-dim validation for nomic-embed-text (`§MOD-01`) | Embeddings | Low |
-| `apps/worker/src/services/dispatch-recovery.service.ts` | Modified | Worker Reliability | Passes `workspaceId` to `getJob` | GraphQueue, Prisma | Low |
-| `apps/worker/src/services/graph-reconciliation.service.ts` | Modified | Worker Reliability | Passes `workspaceId` to `getJob`, cast `::integer` for advisory lock | Prisma, GraphQueue | Low |
-| `apps/worker/src/modules/graph/services/graph-heartbeat.manager.ts` | Modified | Worker Reliability | Fixes table name `"Document"` to `"documents"` | Prisma SQL | Low |
-| `apps/worker/src/modules/graph/services/graph-extraction.service.ts` | Modified | Worker Reliability | Uses `sanitizeErrorMessage` from `@mindvault/shared` | Shared | Low |
-| `apps/worker/src/lib/ollama-validator.ts` | Untracked | Worker / Companion | Preflight Ollama model and endpoint verification | Worker runtime | Low |
-| `apps/worker/src/services/worker-heartbeat.service.ts` | Untracked | Worker / Companion | Publishes worker heartbeat telemetry to Redis | Redis, Worker | Low |
-| `apps/worker/src/index.ts` | Modified | Worker / Companion | Emits `[MINDVAULT_WORKER_READY]` / IPC message for companion, Windows SIGINT | Worker runtime | Low |
-| `apps/worker/src/config/env.ts` | Modified | Worker Configuration | Adds `WORKER_TYPE`, `AUTHORIZED_WORKSPACE_ID`, TLS validation | Zod, dotenv | Low |
-| `apps/api/src/modules/document/document.queue.ts` | Modified | Phase 7.2.1 API | BullMQDocumentQueue multi-workspace getQueue/enqueue with capability routing | BullMQ, Redis | Low |
-| `apps/api/src/modules/document/document.service.ts` | Modified | Phase 7.2.1 API | Enqueues with capability flags; storage fallback to `rawContentBase64` | Storage, Queue | Low |
-| `apps/api/src/modules/graph/queue/graph-extraction.queue.ts` | Modified | Phase 7.2.1 API | BullMQGraphExtractionQueue multi-workspace getQueue/enqueue/getJob | BullMQ, Redis | Low |
-| `apps/api/src/modules/graph/worker/graph-extraction.worker.ts` | Modified | Phase 7.2.1 API | Standby API graph worker uses `parseRedisUrl` | BullMQ, Redis | Low |
-| `apps/api/src/modules/companion/` | Untracked | Companion API | Device pairing, token auth, status, heartbeat, and job status endpoints | Express, Prisma, Redis | Low (Isolated) |
-| `apps/api/src/modules/workspace/workspace-queue.service.ts` | Untracked | Workspace Lifecycle | Cleans BullMQ queues on workspace deletion | BullMQ, Redis | Low |
-| `apps/api/src/modules/workspace/workspace.service.ts` | Modified | Workspace Lifecycle | Calls `workspaceQueueService.cleanWorkspaceQueues` on deletion | Workspace Service | Low |
-| `apps/api/src/routes/health.ts` | Modified | API Observability | `/api/health/ready`, `/live`, `/worker`, `/companion` endpoints | Express, Health | Low |
-| `apps/api/src/app.ts` | Modified | Companion API | Mounts `/api/companion` router | Express | Low |
-| `apps/api/src/types/express.d.ts` | Modified | Companion API | Express `Request.companionDevice` type definition | TypeScript | Low |
-| `apps/api/src/config/env.ts` | Modified | API Configuration | Upstash native TLS `rediss://` enforcement in production | Zod, dotenv | Low |
-| `apps/api/src/index.ts` | Modified | API Lifecycle | Closes BullMQ producer queues during graceful shutdown | Express, BullMQ | Low |
-| `apps/companion/` | Untracked | Companion App | Smart Local Windows Companion (CLI, supervisor, token-store, idle controller) | Node.js, DPAPI | Low (Standalone workspace) |
-| `scripts/install-mindvault-companion.ps1` | Untracked | Windows Scripts | Registers Windows Scheduled Task on logon | PowerShell | Low |
-| `scripts/start-local-worker.ps1` | Untracked | Windows Scripts | Launches local background worker directly | PowerShell | Low |
-| `scripts/start-mindvault-companion.ps1` | Untracked | Windows Scripts | Launches MindVault Companion in daemon mode | PowerShell | Low |
-| `scripts/status-mindvault-companion.ps1` | Untracked | Windows Scripts | Queries Companion device status | PowerShell | Low |
-| `scripts/stop-mindvault-companion.ps1` | Untracked | Windows Scripts | Gracefully halts running Companion process | PowerShell | Low |
-| `scripts/uninstall-mindvault-companion.ps1` | Untracked | Windows Scripts | Removes Windows Scheduled Task | PowerShell | Low |
-| `scripts/test-redis-connection.ts` | Untracked | Diagnostic Scripts | Verifies TLS/TCP connection to Upstash Redis | ioredis | Low |
-| `scripts/verify-api-worker-e2e.ts` | Untracked | Diagnostic Scripts | Verifies end-to-end upload, enqueue, process, and status | Diagnostic | Low |
-| `scripts/verify-worker-preflight.ts` | Untracked | Diagnostic Scripts | Preflight diagnostics (Windows, Redis, PG, Ollama, Storage) | Diagnostic | Low |
-| `scripts/verify-demo-environment.ts` | Modified | Diagnostic Scripts | Adds TLS socket support for Upstash Redis ping | TLS, net | Low |
-| `package.json` | Modified | Monorepo Configuration | Adds root scripts (`companion:dev`, `worker:start`, etc.) and deps | pnpm | Low |
-| `pnpm-lock.yaml` | Modified | Monorepo Configuration | Updated lockfile for companion and dependencies | pnpm | Low |
-| `.env.example` | Modified | Documentation | Documents Upstash TLS `rediss://` requirement and companion vars | Docs | Low |
-| `vitest.config.ts` | Modified | Test Configuration | Sets global timeouts (30s) and test setup files | Vitest | Low |
-| `tests/setup.ts` | Modified | Test Configuration | Configures local PostgreSQL connection limit and timeout | Vitest | Low |
-| `tests/cloud-worker-multi-workspace.test.ts` | Untracked | Test Suite | 8 integration tests covering multi-workspace cloud worker | Vitest, Redis | Low |
-| `tests/companion-runtime.test.ts` | Untracked | Test Suite | 19 integration tests covering companion daemon and supervisor | Vitest | Low |
-| `tests/local-worker-runtime.test.ts` | Untracked | Test Suite | 6 tests covering heartbeat and storage fallback | Vitest | Low |
-| `tests/queue-isolation.integration.test.ts` | Untracked | Test Suite | 13 multi-tenant queue isolation tests | Vitest, Redis | Low |
-| `tests/real-redis-integration.test.ts` | Untracked | Test Suite | 8 real Redis lifecycle and re-routing tests | Vitest, Redis | Low |
-| `tests/redis-infrastructure.test.ts` | Untracked | Test Suite | 41 unit/integration tests for Redis parsing, TLS, and errors | Vitest | Low |
-| `tests/windows-security.integration.test.ts` | Untracked | Test Suite | 4 tests for native Windows DPAPI encryption/decryption | Vitest, PowerShell | Low |
-| `apps/api/src/modules/companion/__tests__/companion-api.integration.test.ts` | Untracked | Test Suite | 10 integration tests for device pairing and job status | Vitest, Supertest | Low |
-| `apps/api/src/routes/health.integration.test.ts` | Untracked | Test Suite | 14 integration tests for health and worker/companion probes | Vitest, Supertest | Low |
-| `PHASE_7_2_1_FINAL_AUDIT.md` | Untracked | Documentation | Forensic report of Phase 7.2.1 remediation | Markdown | Low |
-| `PHASE_7_2_IMPLEMENTATION_REPORT.md` | Untracked | Documentation | Historical implementation report | Markdown | Low |
-| `docs/audits/COMPANION_PRODUCTION_REMEDIATION_REPORT.md` | Untracked | Documentation | Historical companion audit documentation | Markdown | Low |
-| `full_diff.txt` | Untracked | Temporary Scratch | Scratch diff file from earlier session; **do not commit** | Scratch | None |
+| File                                                                         | Change Type | Implementation Phase       | Purpose                                                                                    | Dependencies           |      Risk Assessment       |
+| :--------------------------------------------------------------------------- | :---------: | :------------------------- | :----------------------------------------------------------------------------------------- | :--------------------- | :------------------------: |
+| `prisma/schema.prisma`                                                       |  Modified   | Database & Migrations      | Adds `companionDevices` relation to `User` and `CompanionDevice` model                     | Prisma, PostgreSQL     |       Low (Additive)       |
+| `prisma/migrations/20261114000000_add_companion_devices/migration.sql`       |  Untracked  | Database & Migrations      | SQL DDL creating `companion_devices` table, indexes, and FK                                | PostgreSQL             |       Low (Applied)        |
+| `packages/shared/src/redis.ts`                                               |  Untracked  | Redis Infrastructure       | TLS options, URL parsing, sanitizers, endpoint extraction                                  | ioredis, BullMQ        |    Low (Shared utility)    |
+| `packages/shared/src/index.ts`                                               |  Modified   | Redis Infrastructure       | Exports `redis.js` from `@mindvault/shared`                                                | `@mindvault/shared`    |            Low             |
+| `packages/shared/src/types.ts`                                               |  Modified   | Redis & Queue Architecture | Queue naming helpers (`toBullQueueName`, `getDocumentQueueName`), capability payload flags | `@mindvault/shared`    |    Low (Core contract)     |
+| `apps/worker/src/worker.ts`                                                  |  Modified   | Phase 7.2.1 Cloud Worker   | Dynamic multi-workspace discovery, worker pool, periodic 30s sweep, graceful stop          | BullMQ, Prisma, Redis  |      Low (Remediated)      |
+| `apps/worker/src/modules/graph/worker/graph-extraction.worker.ts`            |  Modified   | Phase 7.2.1 Cloud Worker   | Multi-workspace graph queue listener pool, dynamic registration, graceful stop             | BullMQ, Prisma, Redis  |      Low (Remediated)      |
+| `apps/worker/src/modules/ingestion/pipeline.ts`                              |  Modified   | Phase 7.2.1 Cloud Worker   | Step 9 graph queue enqueue: forwards `capability` and `requiresLocal`                      | GraphQueue             |      Low (Fixes drop)      |
+| `apps/worker/src/lib/graph-queue.ts`                                         |  Modified   | Phase 7.2.1 Cloud Worker   | BullMQWorkerGraphQueue multi-workspace getQueue/enqueue with capability routing            | BullMQ, Redis          |            Low             |
+| `apps/worker/src/modules/ingestion/embeddings/index.ts`                      |  Modified   | Worker Ingestion           | Strict 768-dim validation for nomic-embed-text (`§MOD-01`)                                 | Embeddings             |            Low             |
+| `apps/worker/src/services/dispatch-recovery.service.ts`                      |  Modified   | Worker Reliability         | Passes `workspaceId` to `getJob`                                                           | GraphQueue, Prisma     |            Low             |
+| `apps/worker/src/services/graph-reconciliation.service.ts`                   |  Modified   | Worker Reliability         | Passes `workspaceId` to `getJob`, cast `::integer` for advisory lock                       | Prisma, GraphQueue     |            Low             |
+| `apps/worker/src/modules/graph/services/graph-heartbeat.manager.ts`          |  Modified   | Worker Reliability         | Fixes table name `"Document"` to `"documents"`                                             | Prisma SQL             |            Low             |
+| `apps/worker/src/modules/graph/services/graph-extraction.service.ts`         |  Modified   | Worker Reliability         | Uses `sanitizeErrorMessage` from `@mindvault/shared`                                       | Shared                 |            Low             |
+| `apps/worker/src/lib/ollama-validator.ts`                                    |  Untracked  | Worker / Companion         | Preflight Ollama model and endpoint verification                                           | Worker runtime         |            Low             |
+| `apps/worker/src/services/worker-heartbeat.service.ts`                       |  Untracked  | Worker / Companion         | Publishes worker heartbeat telemetry to Redis                                              | Redis, Worker          |            Low             |
+| `apps/worker/src/index.ts`                                                   |  Modified   | Worker / Companion         | Emits `[MINDVAULT_WORKER_READY]` / IPC message for companion, Windows SIGINT               | Worker runtime         |            Low             |
+| `apps/worker/src/config/env.ts`                                              |  Modified   | Worker Configuration       | Adds `WORKER_TYPE`, `AUTHORIZED_WORKSPACE_ID`, TLS validation                              | Zod, dotenv            |            Low             |
+| `apps/api/src/modules/document/document.queue.ts`                            |  Modified   | Phase 7.2.1 API            | BullMQDocumentQueue multi-workspace getQueue/enqueue with capability routing               | BullMQ, Redis          |            Low             |
+| `apps/api/src/modules/document/document.service.ts`                          |  Modified   | Phase 7.2.1 API            | Enqueues with capability flags; storage fallback to `rawContentBase64`                     | Storage, Queue         |            Low             |
+| `apps/api/src/modules/graph/queue/graph-extraction.queue.ts`                 |  Modified   | Phase 7.2.1 API            | BullMQGraphExtractionQueue multi-workspace getQueue/enqueue/getJob                         | BullMQ, Redis          |            Low             |
+| `apps/api/src/modules/graph/worker/graph-extraction.worker.ts`               |  Modified   | Phase 7.2.1 API            | Standby API graph worker uses `parseRedisUrl`                                              | BullMQ, Redis          |            Low             |
+| `apps/api/src/modules/companion/`                                            |  Untracked  | Companion API              | Device pairing, token auth, status, heartbeat, and job status endpoints                    | Express, Prisma, Redis |       Low (Isolated)       |
+| `apps/api/src/modules/workspace/workspace-queue.service.ts`                  |  Untracked  | Workspace Lifecycle        | Cleans BullMQ queues on workspace deletion                                                 | BullMQ, Redis          |            Low             |
+| `apps/api/src/modules/workspace/workspace.service.ts`                        |  Modified   | Workspace Lifecycle        | Calls `workspaceQueueService.cleanWorkspaceQueues` on deletion                             | Workspace Service      |            Low             |
+| `apps/api/src/routes/health.ts`                                              |  Modified   | API Observability          | `/api/health/ready`, `/live`, `/worker`, `/companion` endpoints                            | Express, Health        |            Low             |
+| `apps/api/src/app.ts`                                                        |  Modified   | Companion API              | Mounts `/api/companion` router                                                             | Express                |            Low             |
+| `apps/api/src/types/express.d.ts`                                            |  Modified   | Companion API              | Express `Request.companionDevice` type definition                                          | TypeScript             |            Low             |
+| `apps/api/src/config/env.ts`                                                 |  Modified   | API Configuration          | Upstash native TLS `rediss://` enforcement in production                                   | Zod, dotenv            |            Low             |
+| `apps/api/src/index.ts`                                                      |  Modified   | API Lifecycle              | Closes BullMQ producer queues during graceful shutdown                                     | Express, BullMQ        |            Low             |
+| `apps/companion/`                                                            |  Untracked  | Companion App              | Smart Local Windows Companion (CLI, supervisor, token-store, idle controller)              | Node.js, DPAPI         | Low (Standalone workspace) |
+| `scripts/install-mindvault-companion.ps1`                                    |  Untracked  | Windows Scripts            | Registers Windows Scheduled Task on logon                                                  | PowerShell             |            Low             |
+| `scripts/start-local-worker.ps1`                                             |  Untracked  | Windows Scripts            | Launches local background worker directly                                                  | PowerShell             |            Low             |
+| `scripts/start-mindvault-companion.ps1`                                      |  Untracked  | Windows Scripts            | Launches MindVault Companion in daemon mode                                                | PowerShell             |            Low             |
+| `scripts/status-mindvault-companion.ps1`                                     |  Untracked  | Windows Scripts            | Queries Companion device status                                                            | PowerShell             |            Low             |
+| `scripts/stop-mindvault-companion.ps1`                                       |  Untracked  | Windows Scripts            | Gracefully halts running Companion process                                                 | PowerShell             |            Low             |
+| `scripts/uninstall-mindvault-companion.ps1`                                  |  Untracked  | Windows Scripts            | Removes Windows Scheduled Task                                                             | PowerShell             |            Low             |
+| `scripts/test-redis-connection.ts`                                           |  Untracked  | Diagnostic Scripts         | Verifies TLS/TCP connection to Upstash Redis                                               | ioredis                |            Low             |
+| `scripts/verify-api-worker-e2e.ts`                                           |  Untracked  | Diagnostic Scripts         | Verifies end-to-end upload, enqueue, process, and status                                   | Diagnostic             |            Low             |
+| `scripts/verify-worker-preflight.ts`                                         |  Untracked  | Diagnostic Scripts         | Preflight diagnostics (Windows, Redis, PG, Ollama, Storage)                                | Diagnostic             |            Low             |
+| `scripts/verify-demo-environment.ts`                                         |  Modified   | Diagnostic Scripts         | Adds TLS socket support for Upstash Redis ping                                             | TLS, net               |            Low             |
+| `package.json`                                                               |  Modified   | Monorepo Configuration     | Adds root scripts (`companion:dev`, `worker:start`, etc.) and deps                         | pnpm                   |            Low             |
+| `pnpm-lock.yaml`                                                             |  Modified   | Monorepo Configuration     | Updated lockfile for companion and dependencies                                            | pnpm                   |            Low             |
+| `.env.example`                                                               |  Modified   | Documentation              | Documents Upstash TLS `rediss://` requirement and companion vars                           | Docs                   |            Low             |
+| `vitest.config.ts`                                                           |  Modified   | Test Configuration         | Sets global timeouts (30s) and test setup files                                            | Vitest                 |            Low             |
+| `tests/setup.ts`                                                             |  Modified   | Test Configuration         | Configures local PostgreSQL connection limit and timeout                                   | Vitest                 |            Low             |
+| `tests/cloud-worker-multi-workspace.test.ts`                                 |  Untracked  | Test Suite                 | 8 integration tests covering multi-workspace cloud worker                                  | Vitest, Redis          |            Low             |
+| `tests/companion-runtime.test.ts`                                            |  Untracked  | Test Suite                 | 19 integration tests covering companion daemon and supervisor                              | Vitest                 |            Low             |
+| `tests/local-worker-runtime.test.ts`                                         |  Untracked  | Test Suite                 | 6 tests covering heartbeat and storage fallback                                            | Vitest                 |            Low             |
+| `tests/queue-isolation.integration.test.ts`                                  |  Untracked  | Test Suite                 | 13 multi-tenant queue isolation tests                                                      | Vitest, Redis          |            Low             |
+| `tests/real-redis-integration.test.ts`                                       |  Untracked  | Test Suite                 | 8 real Redis lifecycle and re-routing tests                                                | Vitest, Redis          |            Low             |
+| `tests/redis-infrastructure.test.ts`                                         |  Untracked  | Test Suite                 | 41 unit/integration tests for Redis parsing, TLS, and errors                               | Vitest                 |            Low             |
+| `tests/windows-security.integration.test.ts`                                 |  Untracked  | Test Suite                 | 4 tests for native Windows DPAPI encryption/decryption                                     | Vitest, PowerShell     |            Low             |
+| `apps/api/src/modules/companion/__tests__/companion-api.integration.test.ts` |  Untracked  | Test Suite                 | 10 integration tests for device pairing and job status                                     | Vitest, Supertest      |            Low             |
+| `apps/api/src/routes/health.integration.test.ts`                             |  Untracked  | Test Suite                 | 14 integration tests for health and worker/companion probes                                | Vitest, Supertest      |            Low             |
+| `PHASE_7_2_1_FINAL_AUDIT.md`                                                 |  Untracked  | Documentation              | Forensic report of Phase 7.2.1 remediation                                                 | Markdown               |            Low             |
+| `PHASE_7_2_IMPLEMENTATION_REPORT.md`                                         |  Untracked  | Documentation              | Historical implementation report                                                           | Markdown               |            Low             |
+| `docs/audits/COMPANION_PRODUCTION_REMEDIATION_REPORT.md`                     |  Untracked  | Documentation              | Historical companion audit documentation                                                   | Markdown               |            Low             |
+| `full_diff.txt`                                                              |  Untracked  | Temporary Scratch          | Scratch diff file from earlier session; **do not commit**                                  | Scratch                |            None            |
 
 ---
 
 ## 4. Phase 7.2.1 Verification & Evidence Analysis
 
 ### 4.1 Concrete Audit Evidence
+
 - **Queue Creation & Registration:** Producers and consumers use identical `toBullQueueName(getDocumentQueueName(workspaceId, capability))` and `toBullQueueName(getGraphQueueName(workspaceId, capability))`.
 - **Exact Queue Names Verified:**
   - Workspace `ws_alpha` Cloud Doc: `document-processing--ws_alpha--cloud`
@@ -128,6 +131,7 @@ Git Tree Operation: Read-only inspection; zero destructive commands executed.
 ## 5. Companion Application & Local Infrastructure Audit
 
 ### 5.1 Architecture & Windows Integration
+
 - **CLI Subcommands:**
   - `--pair`: Interactive one-time pairing code flow (`MVP-XXXX-XXXX`), rejecting tokens via CLI arguments (`§SEC-01`).
   - `--status`: Queries stored token, cloud device status, and tenant job counts.
@@ -167,28 +171,28 @@ Git Tree Operation: Read-only inspection; zero destructive commands executed.
 
 All tests were executed against real local infrastructure (PostgreSQL on port 5433, local Redis on port 6379):
 
-| Test Suite / Scope | Files | Tests Executed | Passed | Failed | Skipped | Status |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Root Multi-Tenant & Infrastructure Suite** (`tests/`) | 8 | 112 | 112 | 0 | 0 | **VERIFIED** |
-| - `tests/cloud-worker-multi-workspace.test.ts` | 1 | 8 | 8 | 0 | 0 | **VERIFIED** |
-| - `tests/queue-isolation.integration.test.ts` | 1 | 13 | 13 | 0 | 0 | **VERIFIED** |
-| - `tests/real-redis-integration.test.ts` | 1 | 8 | 8 | 0 | 0 | **VERIFIED** |
-| - `tests/redis-infrastructure.test.ts` | 1 | 41 | 41 | 0 | 0 | **VERIFIED** |
-| - `tests/companion-runtime.test.ts` | 1 | 19 | 19 | 0 | 0 | **VERIFIED** |
-| - `tests/local-worker-runtime.test.ts` | 1 | 6 | 6 | 0 | 0 | **VERIFIED** |
-| - `tests/windows-security.integration.test.ts` | 1 | 4 | 4 | 0 | 0 | **VERIFIED** |
-| - `tests/verify-demo-environment.test.ts` | 1 | 13 | 13 | 0 | 0 | **VERIFIED** |
-| **Worker Internal & Ingestion Suites** (`apps/worker/`) | 13 | 149 | 149 | 0 | 0 | **VERIFIED** |
-| - `apps/worker/src/worker.test.ts` | 1 | 3 | 3 | 0 | 0 | **VERIFIED** |
-| - `apps/worker/src/modules/graph/__tests__/` (5 files) | 5 | 87 | 87 | 0 | 0 | **VERIFIED** |
-| - `apps/worker/src/modules/ingestion/__tests__/` (5 files) | 5 | 29 | 29 | 0 | 0 | **VERIFIED** |
-| - `apps/worker/src/services/__tests__/` (2 files) | 2 | 30 | 30 | 0 | 0 | **VERIFIED** |
-| **API Companion & Health Observability Suites** (`apps/api/`) | 2 | 24 | 24 | 0 | 0 | **VERIFIED** |
-| - `apps/api/src/modules/companion/__tests__/companion-api.integration.test.ts` | 1 | 10 | 10 | 0 | 0 | **VERIFIED** |
-| - `apps/api/src/routes/health.integration.test.ts` | 1 | 14 | 14 | 0 | 0 | **VERIFIED** |
-| **Historical Hardening Spot Check** | 1 | 7 | 7 | 0 | 0 | **VERIFIED** |
-| - `apps/api/src/modules/graph/__tests__/entity-resolution-hardening.test.ts` | 1 | 7 | 7 | 0 | 0 | **VERIFIED** |
-| **Total Test Execution** | **24 files** | **292 tests** | **292** | **0** | **0** | **100% GREEN** |
+| Test Suite / Scope                                                             |    Files     | Tests Executed | Passed  | Failed | Skipped |     Status     |
+| :----------------------------------------------------------------------------- | :----------: | :------------: | :-----: | :----: | :-----: | :------------: |
+| **Root Multi-Tenant & Infrastructure Suite** (`tests/`)                        |      8       |      112       |   112   |   0    |    0    |  **VERIFIED**  |
+| - `tests/cloud-worker-multi-workspace.test.ts`                                 |      1       |       8        |    8    |   0    |    0    |  **VERIFIED**  |
+| - `tests/queue-isolation.integration.test.ts`                                  |      1       |       13       |   13    |   0    |    0    |  **VERIFIED**  |
+| - `tests/real-redis-integration.test.ts`                                       |      1       |       8        |    8    |   0    |    0    |  **VERIFIED**  |
+| - `tests/redis-infrastructure.test.ts`                                         |      1       |       41       |   41    |   0    |    0    |  **VERIFIED**  |
+| - `tests/companion-runtime.test.ts`                                            |      1       |       19       |   19    |   0    |    0    |  **VERIFIED**  |
+| - `tests/local-worker-runtime.test.ts`                                         |      1       |       6        |    6    |   0    |    0    |  **VERIFIED**  |
+| - `tests/windows-security.integration.test.ts`                                 |      1       |       4        |    4    |   0    |    0    |  **VERIFIED**  |
+| - `tests/verify-demo-environment.test.ts`                                      |      1       |       13       |   13    |   0    |    0    |  **VERIFIED**  |
+| **Worker Internal & Ingestion Suites** (`apps/worker/`)                        |      13      |      149       |   149   |   0    |    0    |  **VERIFIED**  |
+| - `apps/worker/src/worker.test.ts`                                             |      1       |       3        |    3    |   0    |    0    |  **VERIFIED**  |
+| - `apps/worker/src/modules/graph/__tests__/` (5 files)                         |      5       |       87       |   87    |   0    |    0    |  **VERIFIED**  |
+| - `apps/worker/src/modules/ingestion/__tests__/` (5 files)                     |      5       |       29       |   29    |   0    |    0    |  **VERIFIED**  |
+| - `apps/worker/src/services/__tests__/` (2 files)                              |      2       |       30       |   30    |   0    |    0    |  **VERIFIED**  |
+| **API Companion & Health Observability Suites** (`apps/api/`)                  |      2       |       24       |   24    |   0    |    0    |  **VERIFIED**  |
+| - `apps/api/src/modules/companion/__tests__/companion-api.integration.test.ts` |      1       |       10       |   10    |   0    |    0    |  **VERIFIED**  |
+| - `apps/api/src/routes/health.integration.test.ts`                             |      1       |       14       |   14    |   0    |    0    |  **VERIFIED**  |
+| **Historical Hardening Spot Check**                                            |      1       |       7        |    7    |   0    |    0    |  **VERIFIED**  |
+| - `apps/api/src/modules/graph/__tests__/entity-resolution-hardening.test.ts`   |      1       |       7        |    7    |   0    |    0    |  **VERIFIED**  |
+| **Total Test Execution**                                                       | **24 files** | **292 tests**  | **292** | **0**  |  **0**  | **100% GREEN** |
 
 ---
 
@@ -217,6 +221,7 @@ Exit Code: 0 (Zero build errors)
 ## 9. Identified Defect & Non-Disruptive Pre-Deployment Finding
 
 ### Finding CFG-01: Development Fallback Port in Companion Config
+
 - **Severity:** P3 (Developer Ergonomics / Configuration)
 - **Affected File:** `apps/companion/src/config/env.ts` (line 20)
 - **Detail:** In `env.ts`, `CLOUD_API_URL` defaults to `http://localhost:3000`. The API server in `apps/api/src/config/env.ts` defaults to port `4000`. In development mode, if a developer runs `pnpm companion:dev` without explicitly setting `CLOUD_API_URL` in their `.env`, the companion attempts to connect to port 3000 instead of 4000. In production, this default is guarded because `env.ts` strictly rejects any `localhost` or non-HTTPS URL (`§CFG-01`).
@@ -232,6 +237,7 @@ To ensure clean, auditable Git history, the working-tree changes should be separ
 > **No commits have been created.** In strict accordance with safety rules, these commit groupings are prepared and presented for user review and explicit approval.
 
 ### Commit 1: Database Schema & Migrations
+
 - **Commit Message:** `feat(db): add companion device pairing schema and migration`
 - **Files to Stage:**
   - `prisma/schema.prisma`
@@ -240,6 +246,7 @@ To ensure clean, auditable Git history, the working-tree changes should be separ
 - **Verification:** `prisma migrate status` verified schema is in sync.
 
 ### Commit 2: Redis Infrastructure & Queue Utilities
+
 - **Commit Message:** `feat(redis): add Upstash TLS connection parsing, sanitization, and queue naming utilities`
 - **Files to Stage:**
   - `packages/shared/src/redis.ts`
@@ -254,6 +261,7 @@ To ensure clean, auditable Git history, the working-tree changes should be separ
 - **Verification:** 41/41 Redis infrastructure tests passed.
 
 ### Commit 3: Phase 7.2.1 Cloud Worker & Multi-Workspace Queue Isolation
+
 - **Commit Message:** `fix(worker): implement dynamic multi-workspace queue discovery and capability routing (Phase 7.2.1)`
 - **Files to Stage:**
   - `apps/worker/src/worker.ts`
@@ -278,6 +286,7 @@ To ensure clean, auditable Git history, the working-tree changes should be separ
 - **Verification:** 29/29 multi-tenant and real-redis tests passed.
 
 ### Commit 4: Companion Cloud API Endpoints & Observability
+
 - **Commit Message:** `feat(api): add companion device pairing, rate limiting, and observability endpoints`
 - **Files to Stage:**
   - `apps/api/src/modules/companion/` (all 5 files)
@@ -291,6 +300,7 @@ To ensure clean, auditable Git history, the working-tree changes should be separ
 - **Verification:** 24/24 companion API and health tests passed.
 
 ### Commit 5: Smart Local Windows Companion Application & Supervisor
+
 - **Commit Message:** `feat(companion): implement Windows smart companion with DPAPI, supervisor, and idle shutdown`
 - **Files to Stage:**
   - `apps/companion/` (all 13 files)
@@ -314,6 +324,7 @@ To ensure clean, auditable Git history, the working-tree changes should be separ
 - **Verification:** 29/29 companion runtime and Windows DPAPI tests passed.
 
 ### Commit 6: Monorepo Root Configuration & Documentation
+
 - **Commit Message:** `chore(config): update package scripts, lockfile, vitest timeouts, and environment templates`
 - **Files to Stage:**
   - `package.json`

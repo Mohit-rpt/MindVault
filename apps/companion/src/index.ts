@@ -63,10 +63,13 @@ async function main(): Promise<void> {
       });
 
       pairingCode = await new Promise<string>((resolve) => {
-        rl.question('Enter one-time pairing code from MindVault (e.g. MVP-XXXX-XXXX): ', (answer) => {
-          rl.close();
-          resolve(answer.trim());
-        });
+        rl.question(
+          'Enter one-time pairing code from MindVault (e.g. MVP-XXXX-XXXX): ',
+          (answer) => {
+            rl.close();
+            resolve(answer.trim());
+          },
+        );
       });
     }
 
@@ -76,7 +79,11 @@ async function main(): Promise<void> {
     }
 
     const deviceName =
-      env.DEVICE_NAME || `win-${os.hostname().toLowerCase().replace(/[^a-z0-9_-]/g, '')}`;
+      env.DEVICE_NAME ||
+      `win-${os
+        .hostname()
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]/g, '')}`;
 
     try {
       console.log(`Connecting to MindVault Cloud API at ${env.CLOUD_API_URL}...`);
@@ -137,7 +144,9 @@ async function main(): Promise<void> {
         console.log(`  Last Seen At: ${deviceStatus.lastSeenAt || 'Never'}`);
 
         const jobStatus = await client.getJobStatus(token.deviceToken);
-        console.log(`  Queued Jobs:  ${jobStatus.summary.waiting} waiting, ${jobStatus.summary.active} active`);
+        console.log(
+          `  Queued Jobs:  ${jobStatus.summary.waiting} waiting, ${jobStatus.summary.active} active`,
+        );
       } catch (err: any) {
         console.log(`  Cloud Status: UNREACHABLE (${err.message})`);
       }

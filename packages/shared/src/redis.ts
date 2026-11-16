@@ -60,7 +60,9 @@ export function parseRedisUrl(
   const isPlain = parsed.protocol === 'redis:';
 
   if (!isTls && !isPlain) {
-    throw new Error(`Unsupported Redis protocol "${parsed.protocol}". Expected "redis:" or "rediss:".`);
+    throw new Error(
+      `Unsupported Redis protocol "${parsed.protocol}". Expected "redis:" or "rediss:".`,
+    );
   }
 
   const rawHost = parsed.hostname ? parsed.hostname.trim() : '';
@@ -97,7 +99,9 @@ export function parseRedisUrl(
   if (parsed.pathname && parsed.pathname !== '/') {
     const rawDb = parsed.pathname.startsWith('/') ? parsed.pathname.slice(1) : parsed.pathname;
     if (!/^\d+$/.test(rawDb)) {
-      throw new Error(`Invalid Redis database index "${parsed.pathname}". Expected a non-negative integer.`);
+      throw new Error(
+        `Invalid Redis database index "${parsed.pathname}". Expected a non-negative integer.`,
+      );
     }
     const parsedDb = parseInt(rawDb, 10);
     if (parsedDb < 0 || parsedDb > 65535) {
@@ -358,4 +362,3 @@ export function detectDuplicateEnvKeys(
       : undefined,
   };
 }
-

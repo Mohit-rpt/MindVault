@@ -23,10 +23,11 @@ export interface OllamaValidationResult {
 export async function validateOllamaEnvironment(
   options?: OllamaValidationOptions,
 ): Promise<OllamaValidationResult> {
-  const baseUrl = (options?.baseUrl || process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434').replace(
-    /\/$/,
-    '',
-  );
+  const baseUrl = (
+    options?.baseUrl ||
+    process.env.OLLAMA_BASE_URL ||
+    'http://127.0.0.1:11434'
+  ).replace(/\/$/, '');
   const genModel = options?.generationModel || process.env.OLLAMA_GENERATION_MODEL || 'qwen3:0.6b';
   const embedModel = options?.embeddingModel || process.env.EMBEDDING_MODEL || 'nomic-embed-text';
   const timeoutMs = options?.timeoutMs || 3000;

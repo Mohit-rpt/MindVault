@@ -75,7 +75,9 @@ describe('MindVault — Phase 7.2: Real Redis Integration Suite (Zero Mocks)', (
       const safeQueueName = toBullQueueName(queueName);
       const conn = { host: '127.0.0.1', port: 6379 };
 
-      const producerQueue = new Queue<ProcessDocumentJobPayload>(safeQueueName, { connection: conn });
+      const producerQueue = new Queue<ProcessDocumentJobPayload>(safeQueueName, {
+        connection: conn,
+      });
       const documentId = `doc_real_${Date.now()}`;
 
       let processedJobData: ProcessDocumentJobPayload | null = null;
@@ -136,14 +138,12 @@ describe('MindVault — Phase 7.2: Real Redis Integration Suite (Zero Mocks)', (
       process.env.REDIS_URL = LOCAL_REDIS_URL;
 
       const localQueueName = toBullQueueName(getDocumentQueueName(wsAlpha, 'local'));
-      const localTargetQueue = new Queue(localQueueName, { connection: { host: '127.0.0.1', port: 6379 } });
+      const localTargetQueue = new Queue(localQueueName, {
+        connection: { host: '127.0.0.1', port: 6379 },
+      });
 
       try {
-        const pipeline = new DocumentIngestionPipeline(
-          {} as any,
-          {} as any,
-          {} as any,
-        );
+        const pipeline = new DocumentIngestionPipeline({} as any, {} as any, {} as any);
 
         const payload: ProcessDocumentJobPayload = {
           documentId: `doc_reroute_${Date.now()}`,
@@ -154,7 +154,9 @@ describe('MindVault — Phase 7.2: Real Redis Integration Suite (Zero Mocks)', (
         };
 
         // Pass rerouteQueueOverride to verify real re-routing destination
-        const result = await pipeline.processDocument(payload, { rerouteQueueOverride: localTargetQueue });
+        const result = await pipeline.processDocument(payload, {
+          rerouteQueueOverride: localTargetQueue,
+        });
 
         expect(result).toBeDefined();
         expect(result!.status).toBe('rerouted_to_local');
@@ -182,7 +184,9 @@ describe('MindVault — Phase 7.2: Real Redis Integration Suite (Zero Mocks)', (
       process.env.REDIS_URL = LOCAL_REDIS_URL;
 
       const localGraphQueueName = toBullQueueName(getGraphQueueName(wsAlpha, 'local'));
-      const localGraphQueue = new Queue(localGraphQueueName, { connection: { host: '127.0.0.1', port: 6379 } });
+      const localGraphQueue = new Queue(localGraphQueueName, {
+        connection: { host: '127.0.0.1', port: 6379 },
+      });
 
       try {
         const worker = new GraphExtractionWorker();
@@ -302,8 +306,12 @@ describe('MindVault — Phase 7.2: Real Redis Integration Suite (Zero Mocks)', (
 
       // 1. Create a queue and enqueue a job for both workspaces
       const conn = { host: '127.0.0.1', port: 6379 };
-      const qEphemeral = new Queue(toBullQueueName(getDocumentQueueName(wsEphemeral, 'local')), { connection: conn });
-      const qSurvivor = new Queue(toBullQueueName(getDocumentQueueName(wsSurvivor, 'local')), { connection: conn });
+      const qEphemeral = new Queue(toBullQueueName(getDocumentQueueName(wsEphemeral, 'local')), {
+        connection: conn,
+      });
+      const qSurvivor = new Queue(toBullQueueName(getDocumentQueueName(wsSurvivor, 'local')), {
+        connection: conn,
+      });
 
       await qEphemeral.add('proc', { documentId: 'doc-eph' });
       await qSurvivor.add('proc', { documentId: 'doc-survivor' });
@@ -312,7 +320,10 @@ describe('MindVault — Phase 7.2: Real Redis Integration Suite (Zero Mocks)', (
       expect(await qSurvivor.count()).toBe(1);
 
       // 2. Perform workspace queue cleanup for wsEphemeral only
-      const cleanupResult = await workspaceQueueService.cleanWorkspaceQueues(wsEphemeral, LOCAL_REDIS_URL);
+      const cleanupResult = await workspaceQueueService.cleanWorkspaceQueues(
+        wsEphemeral,
+        LOCAL_REDIS_URL,
+      );
       expect(cleanupResult.workspaceId).toBe(wsEphemeral);
 
       // 3. Verify qEphemeral was cleaned

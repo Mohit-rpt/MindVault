@@ -348,7 +348,9 @@ describe('MindVault Phase 7.2.1 — Cloud Worker Multi-Workspace Queue Verificat
 
         // Enqueue a local job for Workspace B
         const safeBetaQueue = toBullQueueName(getDocumentQueueName(wsBeta, 'local'));
-        const queueBeta = new Queue(safeBetaQueue, { connection: { host: '127.0.0.1', port: 6379 } });
+        const queueBeta = new Queue(safeBetaQueue, {
+          connection: { host: '127.0.0.1', port: 6379 },
+        });
         await queueBeta.add('process-document', {
           documentId: `doc_beta_${Date.now()}`,
           workspaceId: wsBeta,
@@ -358,7 +360,9 @@ describe('MindVault Phase 7.2.1 — Cloud Worker Multi-Workspace Queue Verificat
 
         // Enqueue a local job for Workspace A
         const safeAlphaQueue = toBullQueueName(getDocumentQueueName(wsAlpha, 'local'));
-        const queueAlpha = new Queue(safeAlphaQueue, { connection: { host: '127.0.0.1', port: 6379 } });
+        const queueAlpha = new Queue(safeAlphaQueue, {
+          connection: { host: '127.0.0.1', port: 6379 },
+        });
         await queueAlpha.add('process-document', {
           documentId: `doc_alpha_${Date.now()}`,
           workspaceId: wsAlpha,

@@ -52,7 +52,10 @@ export class GraphExtractionWorker {
         console.error(`[GraphWorker] Job ${job?.id} failed: ${sanitizeErrorMessage(err.message)}`);
       });
     } catch (err: any) {
-      console.warn('[GraphWorker] Redis connection not available. Running in standby mode:', sanitizeErrorMessage(err.message));
+      console.warn(
+        '[GraphWorker] Redis connection not available. Running in standby mode:',
+        sanitizeErrorMessage(err.message),
+      );
     }
   }
 

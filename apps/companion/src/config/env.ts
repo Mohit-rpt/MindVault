@@ -65,8 +65,7 @@ const envSchema = z
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['CLOUD_API_URL'],
-          message:
-            'CLOUD_API_URL must use encrypted HTTPS scheme in production mode (§CFG-01).',
+          message: 'CLOUD_API_URL must use encrypted HTTPS scheme in production mode (§CFG-01).',
         });
       }
     }

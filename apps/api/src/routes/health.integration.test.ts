@@ -10,10 +10,7 @@ vi.mock('../lib/prisma.js', () => ({
 
 import { createApp } from '../app.js';
 import { prisma } from '../lib/prisma.js';
-import {
-  setRedisHealthClient,
-  getRedisHealthClient,
-} from './health.js';
+import { setRedisHealthClient, getRedisHealthClient } from './health.js';
 import { documentQueue, setDocumentQueue } from '../modules/document/document.queue.js';
 
 describe('MindVault Health Endpoints — Integration Suite', () => {
@@ -104,9 +101,7 @@ describe('MindVault Health Endpoints — Integration Suite', () => {
   it('6. Readiness returns HTTP 503 on Redis ping timeout (>1000ms)', async () => {
     (prisma.$queryRaw as any).mockResolvedValueOnce([{ '?column?': 1 }]);
     setRedisHealthClient({
-      ping: vi.fn().mockImplementation(
-        () => new Promise((resolve) => setTimeout(resolve, 1300)),
-      ),
+      ping: vi.fn().mockImplementation(() => new Promise((resolve) => setTimeout(resolve, 1300))),
     } as any);
 
     const app = createApp();

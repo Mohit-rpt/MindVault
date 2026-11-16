@@ -71,7 +71,13 @@ export class WorkerService {
 
   public async resolveWorkspaces(options?: { workspaceIds?: string[] }): Promise<string[]> {
     if (options?.workspaceIds && options.workspaceIds.length > 0) {
-      return [...new Set(options.workspaceIds.map((id) => id.trim()).filter((id) => Boolean(id) && id !== 'undefined' && id !== 'null'))];
+      return [
+        ...new Set(
+          options.workspaceIds
+            .map((id) => id.trim())
+            .filter((id) => Boolean(id) && id !== 'undefined' && id !== 'null'),
+        ),
+      ];
     }
     if (process.env.AUTHORIZED_WORKSPACE_IDS) {
       const ids = process.env.AUTHORIZED_WORKSPACE_IDS.split(',')
@@ -148,17 +154,25 @@ export class WorkerService {
           this.logger.info(`Job ${job.id} completed successfully on queue "${qName}"`);
         });
         w.on('failed', (job: Job | undefined, err: Error) => {
-          this.logger.error(`Job ${job?.id} failed on queue "${qName}": ${sanitizeErrorMessage(err.message)}`);
+          this.logger.error(
+            `Job ${job?.id} failed on queue "${qName}": ${sanitizeErrorMessage(err.message)}`,
+          );
         });
         w.on('error', (err: Error) => {
-          this.logger.warn(`BullMQ worker connection error on queue "${qName}": ${sanitizeErrorMessage(err.message)}`);
+          this.logger.warn(
+            `BullMQ worker connection error on queue "${qName}": ${sanitizeErrorMessage(err.message)}`,
+          );
         });
 
         this.bullWorkersByQueue.set(qName, w);
         this.bullWorkers.push(w);
-        this.logger.info(`BullMQ worker actively listening on queue "${qName}" (BullMQ: "${safeBullName}")`);
+        this.logger.info(
+          `BullMQ worker actively listening on queue "${qName}" (BullMQ: "${safeBullName}")`,
+        );
       } catch (err: any) {
-        this.logger.warn(`Could not register worker for queue "${qName}": ${sanitizeErrorMessage(err.message)}`);
+        this.logger.warn(
+          `Could not register worker for queue "${qName}": ${sanitizeErrorMessage(err.message)}`,
+        );
       }
     }
 
@@ -233,7 +247,10 @@ export class WorkerService {
     };
   }
 
-  public async start(options?: { forceLiveBullMQ?: boolean; workspaceIds?: string[] }): Promise<void> {
+  public async start(options?: {
+    forceLiveBullMQ?: boolean;
+    workspaceIds?: string[];
+  }): Promise<void> {
     if (this.isRunning) {
       this.logger.warn('Worker is already running');
       return;
@@ -271,7 +288,9 @@ export class WorkerService {
         } else if (ollamaCheck.status === 'MODEL_MISSING') {
           this.logger.warn(`⚠️ Ollama model warning: ${ollamaCheck.remediation}`);
         } else {
-          this.logger.warn(`⚠️ Ollama endpoint warning: ${ollamaCheck.error}. ${ollamaCheck.remediation}`);
+          this.logger.warn(
+            `⚠️ Ollama endpoint warning: ${ollamaCheck.error}. ${ollamaCheck.remediation}`,
+          );
         }
       } catch (err: any) {
         this.logger.warn(`⚠️ Ollama preflight check failed: ${err.message}`);
@@ -341,7 +360,8 @@ export class WorkerService {
     }
 
     // 1. Pause ingestion polling immediately across all registered workers
-    const allDocWorkers = this.bullWorkers.length > 0 ? this.bullWorkers : (this.bullWorker ? [this.bullWorker] : []);
+    const allDocWorkers =
+      this.bullWorkers.length > 0 ? this.bullWorkers : this.bullWorker ? [this.bullWorker] : [];
     if (allDocWorkers.length > 0) {
       for (const w of allDocWorkers) {
         try {

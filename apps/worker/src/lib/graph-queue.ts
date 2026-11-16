@@ -22,7 +22,11 @@ import crypto from 'node:crypto';
 
 export interface IWorkerGraphQueue {
   enqueue(payload: GraphExtractionJobPayload, options?: { delay?: number }): Promise<string | void>;
-  getJob?(jobId: string, workspaceId?: string, capability?: 'local' | 'cloud'): Promise<Job<GraphExtractionJobPayload> | null | undefined>;
+  getJob?(
+    jobId: string,
+    workspaceId?: string,
+    capability?: 'local' | 'cloud',
+  ): Promise<Job<GraphExtractionJobPayload> | null | undefined>;
   close(): Promise<void>;
 }
 
@@ -78,7 +82,9 @@ export class BullMQWorkerGraphQueue implements IWorkerGraphQueue {
     const capability = payload.capability || (payload.requiresLocal ? 'local' : undefined);
     const targetQueue = this.getQueue(payload.workspaceId, capability);
     if (!targetQueue) {
-      throw new Error('Worker graph extraction queue is unavailable (Redis offline or uninitialized)');
+      throw new Error(
+        'Worker graph extraction queue is unavailable (Redis offline or uninitialized)',
+      );
     }
     const runId = payload.extractionRunId || crypto.randomUUID();
     const jobId = formatExtractionJobId(payload.documentId, runId);

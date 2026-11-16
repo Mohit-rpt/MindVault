@@ -157,7 +157,10 @@ export async function pingRedisServer(
         const latencyMs = Math.round(performance.now() - start);
         finish({ success: true, latencyMs });
       } else if (response.includes('-ERR') || response.includes('-NOAUTH')) {
-        finish({ success: false, error: response.trim().replace(/(AUTH\s+(?:\S+\s+)?)\S+/gi, '$1[REDACTED]') });
+        finish({
+          success: false,
+          error: response.trim().replace(/(AUTH\s+(?:\S+\s+)?)\S+/gi, '$1[REDACTED]'),
+        });
       } else {
         finish({ success: true, latencyMs: Math.round(performance.now() - start) });
       }
@@ -168,7 +171,10 @@ export async function pingRedisServer(
     });
 
     socket.on('error', (err: Error) => {
-      finish({ success: false, error: err.message.replace(/(rediss?:\/\/[^:]+:)[^@]+(@[^\s"']+)/gi, '$1[REDACTED]$2') });
+      finish({
+        success: false,
+        error: err.message.replace(/(rediss?:\/\/[^:]+:)[^@]+(@[^\s"']+)/gi, '$1[REDACTED]$2'),
+      });
     });
   });
 }
