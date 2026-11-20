@@ -269,6 +269,26 @@ export function getSafeRedisEndpoint(url?: string): SafeRedisEndpoint {
   }
 }
 
+/**
+ * Determines whether a Redis URL points to a local loopback/host instance (e.g. localhost, 127.0.0.1, ::1).
+ * Returns false if it is a remote/cloud instance (TLS or non-local hostname/IP).
+ */
+export function isLocalRedis(url?: string): boolean {
+  if (!url || !url.trim()) return true; // Default dev fallback is localhost:6379
+  try {
+    const trimmed = url.trim();
+    const parsed = new URL(trimmed);
+    if (parsed.protocol === 'rediss:') {
+      return false; // Native TLS is strictly cloud/remote
+    }
+    const rawHost = parsed.hostname ? parsed.hostname.toLowerCase().trim() : '';
+    const host = rawHost.startsWith('[') && rawHost.endsWith(']') ? rawHost.slice(1, -1) : rawHost;
+    return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '0.0.0.0';
+  } catch {
+    return false;
+  }
+}
+
 export interface UpstashValidationResult {
   valid: boolean;
   endpoint?: SafeRedisEndpoint;

@@ -12,7 +12,7 @@
  * - Synchronized physical markdown files in infrastructure/storage/documents/
  *
  * Operational Guarantees:
- * 1. 100% Offline: Zero calls to Ollama, Gemini, or external APIs.
+ * 1. 100% Offline: Zero calls to Gemini or external APIs.
  * 2. Idempotent: Can be run repeatedly with zero duplicate records or constraints violations.
  * 3. Tenant-Isolated: All data scoped to 'ws_demo_showcase_001'; never modifies real user data.
  */

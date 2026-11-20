@@ -46,20 +46,31 @@ Write-Host "  Architecture:  $([System.Environment]::GetEnvironmentVariable('PRO
 Write-Host "  Node Version:  $(node --version)" -ForegroundColor Gray
 Write-Host "  Concurrency:   $Concurrency (optimized for local CPU/RAM)" -ForegroundColor Gray
 Write-Host "  Target Queues: document-processing, graph-extraction" -ForegroundColor Gray
-Write-Host "  Local Ollama:  http://127.0.0.1:11434" -ForegroundColor Gray
+Write-Host "  AI Provider:   Google Gemini AI (Cloud API)" -ForegroundColor Gray
 Write-Host "========================================================================" -ForegroundColor Cyan
 Write-Host ""
 
-# 1. Verify Ollama process / endpoint responsiveness
-Write-Host "[1/3] Checking Local Ollama Endpoint..." -ForegroundColor Yellow
-try {
-    $ollamaTest = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -Method Get -TimeoutSec 3 -ErrorAction Stop
-    $modelNames = $ollamaTest.models | ForEach-Object { $_.name }
-    Write-Host "  [ PASS ] Ollama is active. Installed models: $($modelNames -join ', ')" -ForegroundColor Green
-} catch {
-    Write-Host "  [ FAIL ] Ollama is not responding at http://127.0.0.1:11434" -ForegroundColor Red
-    Write-Host "  Action required: Please start Ollama by opening the Ollama application or running 'ollama serve'." -ForegroundColor Yellow
-    exit 1
+# 1. Verify Gemini API credentials configured
+Write-Host "[1/3] Checking Google Gemini AI Credentials..." -ForegroundColor Yellow
+if ([string]::IsNullOrWhiteSpace($env:GEMINI_API_KEY)) {
+    # Check if present in .env
+    if (Test-Path ".env") {
+        $envContent = Get-Content ".env" -Raw
+        if ($envContent -match "GEMINI_API_KEY\s*=\s*['""]?([^'""]+)['""]?") {
+            $maskedKey = $Matches[1].Substring(0, [Math]::Min(8, $Matches[1].Length)) + "...[REDACTED]"
+            Write-Host "  [ PASS ] Gemini API key detected in .env: $maskedKey" -ForegroundColor Green
+        } else {
+            Write-Host "  [ FAIL ] GEMINI_API_KEY is not configured in environment or .env file." -ForegroundColor Red
+            Write-Host "  Action required: Set GEMINI_API_KEY in your .env file or environment before launching." -ForegroundColor Yellow
+            exit 1
+        }
+    } else {
+        Write-Host "  [ FAIL ] GEMINI_API_KEY is not configured and .env file was not found." -ForegroundColor Red
+        exit 1
+    }
+} else {
+    $maskedKey = $env:GEMINI_API_KEY.Substring(0, [Math]::Min(8, $env:GEMINI_API_KEY.Length)) + "...[REDACTED]"
+    Write-Host "  [ PASS ] Gemini API key detected in environment: $maskedKey" -ForegroundColor Green
 }
 
 # 2. Run deterministic preflight checks unless explicitly skipped
@@ -80,9 +91,9 @@ if (-not $SkipPreflight) {
 
 # 3. Configure runtime environment variables for local Windows worker execution
 $env:WORKER_CONCURRENCY = "$Concurrency"
-if (-not $env:OLLAMA_BASE_URL) {
-    $env:OLLAMA_BASE_URL = "http://127.0.0.1:11434"
-}
+$env:LLM_PROVIDER = "gemini"
+$env:EMBEDDING_PROVIDER = "gemini"
+$env:EMBEDDING_MODEL = "gemini-embedding-2"
 
 Write-Host ""
 Write-Host "[3/3] Launching Background Worker in '$Mode' mode..." -ForegroundColor Yellow

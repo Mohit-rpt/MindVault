@@ -8,9 +8,10 @@ import {
   parseRedisUrl,
   sanitizeRedisUrl,
   sanitizeErrorMessage,
+  isLocalRedis,
 } from '@mindvault/shared';
 import { DocumentIngestionPipeline } from './modules/ingestion/pipeline.js';
-import { WorkerStorageProvider } from './lib/storage.js';
+import { WorkerStorageProvider, createWorkerStorage } from './lib/storage.js';
 import { PrismaWorkerDatabaseService } from './lib/db.js';
 import { createEmbeddingProvider } from './modules/ingestion/embeddings/index.js';
 import { BullMQWorkerGraphQueue } from './lib/graph-queue.js';
@@ -21,7 +22,6 @@ import {
 import { DispatchRecoveryService } from './services/dispatch-recovery.service.js';
 import { GraphReconciliationService } from './services/graph-reconciliation.service.js';
 import { WorkerHeartbeatService } from './services/worker-heartbeat.service.js';
-import { validateOllamaEnvironment } from './lib/ollama-validator.js';
 
 export class WorkerService {
   private logger = new Logger('WorkerService');
@@ -257,6 +257,22 @@ export class WorkerService {
     }
 
     this.isRunning = true;
+
+    // Local Worker Safety Guard (§P0):
+    // Prevent accidental processing of remote/production queues from local development environments
+    const currentRedisUrl = process.env.REDIS_URL || env.REDIS_URL;
+    const isDev = (process.env.NODE_ENV || env.NODE_ENV) === 'development';
+    const allowRemote =
+      process.env.DEV_ALLOW_REMOTE_REDIS === 'true' || env.DEV_ALLOW_REMOTE_REDIS === true;
+    if (isDev && !isLocalRedis(currentRedisUrl) && !allowRemote) {
+      this.isRunning = false;
+      const err = new Error(
+        `CRITICAL SECURITY GUARD: Worker startup blocked. Development worker cannot connect to remote Redis (${sanitizeRedisUrl(currentRedisUrl)}) without DEV_ALLOW_REMOTE_REDIS=true.`,
+      );
+      this.logger.error(err.message);
+      throw err;
+    }
+
     this.forceLiveBullMQ = !!options?.forceLiveBullMQ;
     this.logger.info('🚀 MindVault background worker initialized', {
       concurrency: env.WORKER_CONCURRENCY,
@@ -266,34 +282,23 @@ export class WorkerService {
 
     // Initialize pipeline if not injected
     if (!this.pipeline) {
-      const storage = new WorkerStorageProvider();
+      const storage = createWorkerStorage();
       const embeddingProvider = createEmbeddingProvider();
       const db = new PrismaWorkerDatabaseService();
       const graphQueue = new BullMQWorkerGraphQueue();
       this.pipeline = new DocumentIngestionPipeline(storage, embeddingProvider, db, graphQueue);
     }
 
-    // Preflight Ollama verification for local inference runtime
+    // Preflight Gemini configuration check (offline credential presence verification)
     if (env.NODE_ENV !== 'test') {
-      try {
-        const ollamaCheck = await validateOllamaEnvironment({
-          baseUrl: env.OLLAMA_BASE_URL,
-          generationModel: env.OLLAMA_GENERATION_MODEL,
-          embeddingModel: env.EMBEDDING_MODEL,
-        });
-        if (ollamaCheck.ready) {
-          this.logger.info(
-            `✅ Local Ollama inference ready at ${env.OLLAMA_BASE_URL} (models: ${ollamaCheck.installedModels.join(', ')})`,
-          );
-        } else if (ollamaCheck.status === 'MODEL_MISSING') {
-          this.logger.warn(`⚠️ Ollama model warning: ${ollamaCheck.remediation}`);
-        } else {
-          this.logger.warn(
-            `⚠️ Ollama endpoint warning: ${ollamaCheck.error}. ${ollamaCheck.remediation}`,
-          );
-        }
-      } catch (err: any) {
-        this.logger.warn(`⚠️ Ollama preflight check failed: ${err.message}`);
+      if (env.GEMINI_API_KEY && env.GEMINI_API_KEY.trim().length > 0) {
+        this.logger.info(
+          `✅ Google Gemini configured (API key present, target models: ${env.GEMINI_MODEL}, ${env.GEMINI_EMBEDDING_MODEL})`,
+        );
+      } else {
+        this.logger.warn(
+          '⚠️ GEMINI_API_KEY is not configured in environment. Ingestion embedding and extraction calls will fail unless provided.',
+        );
       }
     }
 

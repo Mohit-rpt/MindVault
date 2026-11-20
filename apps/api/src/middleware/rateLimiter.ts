@@ -1,5 +1,6 @@
 import rateLimit from 'express-rate-limit';
 import { env } from '../config/env.js';
+import { RedisRateLimitStore } from './redisRateLimiter.js';
 
 /**
  * Rate limiter for sensitive authentication endpoints (login, registration)
@@ -10,6 +11,7 @@ export const authRateLimiter = rateLimit({
   max: env.NODE_ENV === 'test' ? 1000 : 30, // 30 attempts per 15 mins in production
   standardHeaders: true,
   legacyHeaders: false,
+  store: new RedisRateLimitStore('auth_legacy', undefined, false),
   message: {
     success: false,
     error: {

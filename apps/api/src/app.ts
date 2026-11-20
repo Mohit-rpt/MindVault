@@ -1,6 +1,7 @@
 import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 import { env } from './config/env.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -17,7 +18,20 @@ import { companionRouter } from './modules/companion/companion.routes.js';
 export function createApp(): Express {
   const app = express();
 
-  // Basic security and parsing middleware
+  // 1. HTTP Security Headers (§SEC-08)
+  app.use(
+    helmet({
+      contentSecurityPolicy: false, // REST & SSE API serving JSON/events; CSP enforced at frontend host
+      crossOriginResourcePolicy: { policy: 'cross-origin' }, // Allows cross-origin SPA requests (Vercel -> Render)
+      frameguard: { action: 'deny' }, // Anti-clickjacking
+      hsts:
+        env.NODE_ENV === 'production'
+          ? { maxAge: 15552000, includeSubDomains: true, preload: true }
+          : false,
+    }),
+  );
+
+  // 2. Cross-Origin Resource Sharing
   app.use(
     cors({
       origin: env.CORS_ORIGIN,

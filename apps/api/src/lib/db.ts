@@ -5,7 +5,11 @@ import {
   ChatSessionStatus,
   ChatMessageRole,
   ChatMessageStatus,
+  EmbeddingModelPolicy,
+  type SearchVectorChunksOptions,
 } from '@mindvault/shared';
+
+export type { SearchVectorChunksOptions };
 
 export interface UserRecord {
   id: string;
@@ -182,6 +186,8 @@ export interface IDatabaseService {
     checksum: string;
     storageKey: string;
     status?: DocumentStatus;
+    embeddingModel?: string | null;
+    embeddingDimension?: number | null;
     metadata?: Record<string, unknown>;
   }): Promise<DocumentRecord>;
   findDocumentById(id: string): Promise<DocumentRecord | null>;
@@ -232,13 +238,7 @@ export interface IDatabaseService {
   searchVectorChunks(
     workspaceId: string,
     queryVector: number[],
-    options?: {
-      topK?: number;
-      documentIds?: string[];
-      fileTypes?: string[];
-      pageStart?: number;
-      pageEnd?: number;
-    },
+    options?: SearchVectorChunksOptions,
   ): Promise<SearchChunkResult[]>;
 
   searchKeywordChunks(
@@ -327,6 +327,85 @@ export interface IDatabaseService {
     limit?: number,
   ): Promise<ChatMessageRecord[]>;
   reconcileOrphanedMessages(): Promise<number>;
+}
+
+export interface BuiltVectorSearchQuery {
+  query: string;
+  params: any[];
+}
+
+export function buildVectorSearchQuery(
+  workspaceId: string,
+  queryVector: number[],
+  options?: SearchVectorChunksOptions,
+): BuiltVectorSearchQuery {
+  const topK = Math.min(Math.max(options?.topK || 10, 1), 50);
+  const vectorStr = `[${queryVector.join(',')}]`;
+
+  let conditions = `c."workspaceId" = $1 AND d."workspaceId" = $1 AND d."status" = 'COMPLETED' AND c."embedding" IS NOT NULL`;
+  const params: any[] = [workspaceId, vectorStr, topK];
+  let paramIndex = 4;
+
+  const policy = EmbeddingModelPolicy.resolveFilterPolicy(options?.embeddingModel);
+
+  // Invariants A, B, C, D: Model-aware gating (strictly parameterized, SQL injection safe)
+  if (!policy.isRecognized) {
+    // Unknown or unapproved model identities must never match any vectors
+    conditions += ` AND d."embeddingModel" = $${paramIndex} AND false`;
+    params.push(policy.targetModel);
+    paramIndex++;
+  } else if (policy.allowNullModel) {
+    // Ollama legacy compatibility: matches explicit nomic-embed-text OR legacy NULL metadata
+    conditions += ` AND (d."embeddingModel" = $${paramIndex} OR d."embeddingModel" IS NULL)`;
+    params.push(policy.targetModel);
+    paramIndex++;
+  } else {
+    // Gemini retrieval: strictly matches exact approved model identity, excluding NULL and Ollama
+    conditions += ` AND d."embeddingModel" = $${paramIndex}`;
+    params.push(policy.targetModel);
+    paramIndex++;
+  }
+
+  if (options?.documentIds && options.documentIds.length > 0) {
+    conditions += ` AND c."documentId" = ANY($${paramIndex}::text[])`;
+    params.push(options.documentIds);
+    paramIndex++;
+  }
+
+  if (options?.fileTypes && options.fileTypes.length > 0) {
+    conditions += ` AND LOWER(d."extension") = ANY($${paramIndex}::text[])`;
+    params.push(options.fileTypes.map((ft) => ft.toLowerCase().replace(/^\./, '')));
+    paramIndex++;
+  }
+
+  if (options?.pageStart !== undefined && options?.pageStart !== null) {
+    conditions += ` AND (c."pageEnd" IS NULL OR c."pageEnd" >= $${paramIndex})`;
+    params.push(options.pageStart);
+    paramIndex++;
+  }
+
+  if (options?.pageEnd !== undefined && options?.pageEnd !== null) {
+    conditions += ` AND (c."pageStart" IS NULL OR c."pageStart" <= $${paramIndex})`;
+    params.push(options.pageEnd);
+    paramIndex++;
+  }
+
+  const query = `
+      SELECT 
+        c."id", c."documentId", c."workspaceId", c."chunkIndex", c."content", c."tokenCount",
+        c."pageStart", c."pageEnd", c."metadata", c."createdAt",
+        d."originalName" AS "docOriginalName", d."extension" AS "docExtension",
+        d."status" AS "docStatus", d."pageCount" AS "docPageCount",
+        (1 - (c."embedding" <=> $2::vector)) AS "similarity",
+        (c."embedding" <=> $2::vector) AS "distance"
+      FROM "document_chunks" c
+      JOIN "documents" d ON c."documentId" = d."id"
+      WHERE ${conditions}
+      ORDER BY c."embedding" <=> $2::vector ASC
+      LIMIT $3
+    `;
+
+  return { query, params };
 }
 
 // ---------------------------------------------------------------------------
@@ -528,6 +607,8 @@ export class PrismaDatabaseService implements IDatabaseService {
     checksum: string;
     storageKey: string;
     status?: DocumentStatus;
+    embeddingModel?: string | null;
+    embeddingDimension?: number | null;
     metadata?: Record<string, unknown>;
   }): Promise<DocumentRecord> {
     const doc = await prisma.document.create({
@@ -542,6 +623,8 @@ export class PrismaDatabaseService implements IDatabaseService {
         checksum: data.checksum,
         storageKey: data.storageKey,
         status: data.status || 'UPLOADED',
+        embeddingModel: data.embeddingModel,
+        embeddingDimension: data.embeddingDimension,
         metadata: (data.metadata as any) || {},
       },
     });
@@ -708,60 +791,9 @@ export class PrismaDatabaseService implements IDatabaseService {
   async searchVectorChunks(
     workspaceId: string,
     queryVector: number[],
-    options?: {
-      topK?: number;
-      documentIds?: string[];
-      fileTypes?: string[];
-      pageStart?: number;
-      pageEnd?: number;
-    },
+    options?: SearchVectorChunksOptions,
   ): Promise<SearchChunkResult[]> {
-    const topK = Math.min(Math.max(options?.topK || 10, 1), 50);
-    const vectorStr = `[${queryVector.join(',')}]`;
-
-    let conditions = `c."workspaceId" = $1 AND d."workspaceId" = $1 AND d."status" = 'COMPLETED' AND c."embedding" IS NOT NULL`;
-    const params: any[] = [workspaceId, vectorStr, topK];
-    let paramIndex = 4;
-
-    if (options?.documentIds && options.documentIds.length > 0) {
-      conditions += ` AND c."documentId" = ANY($${paramIndex}::text[])`;
-      params.push(options.documentIds);
-      paramIndex++;
-    }
-
-    if (options?.fileTypes && options.fileTypes.length > 0) {
-      conditions += ` AND LOWER(d."extension") = ANY($${paramIndex}::text[])`;
-      params.push(options.fileTypes.map((ft) => ft.toLowerCase().replace(/^\./, '')));
-      paramIndex++;
-    }
-
-    if (options?.pageStart !== undefined && options?.pageStart !== null) {
-      conditions += ` AND (c."pageEnd" IS NULL OR c."pageEnd" >= $${paramIndex})`;
-      params.push(options.pageStart);
-      paramIndex++;
-    }
-
-    if (options?.pageEnd !== undefined && options?.pageEnd !== null) {
-      conditions += ` AND (c."pageStart" IS NULL OR c."pageStart" <= $${paramIndex})`;
-      params.push(options.pageEnd);
-      paramIndex++;
-    }
-
-    const query = `
-      SELECT 
-        c."id", c."documentId", c."workspaceId", c."chunkIndex", c."content", c."tokenCount",
-        c."pageStart", c."pageEnd", c."metadata", c."createdAt",
-        d."originalName" AS "docOriginalName", d."extension" AS "docExtension",
-        d."status" AS "docStatus", d."pageCount" AS "docPageCount",
-        (1 - (c."embedding" <=> $2::vector)) AS "similarity",
-        (c."embedding" <=> $2::vector) AS "distance"
-      FROM "document_chunks" c
-      JOIN "documents" d ON c."documentId" = d."id"
-      WHERE ${conditions}
-      ORDER BY c."embedding" <=> $2::vector ASC
-      LIMIT $3
-    `;
-
+    const { query, params } = buildVectorSearchQuery(workspaceId, queryVector, options);
     const rows = (await prisma.$queryRawUnsafe(query, ...params)) as any[];
 
     return rows.map((row) => ({
@@ -1363,6 +1395,8 @@ export class InMemoryDatabaseService implements IDatabaseService {
     checksum: string;
     storageKey: string;
     status?: DocumentStatus;
+    embeddingModel?: string | null;
+    embeddingDimension?: number | null;
     metadata?: Record<string, unknown>;
   }): Promise<DocumentRecord> {
     const doc: DocumentRecord = {
@@ -1379,8 +1413,8 @@ export class InMemoryDatabaseService implements IDatabaseService {
       errorMessage: null,
       pageCount: null,
       chunkCount: 0,
-      embeddingModel: null,
-      embeddingDimension: null,
+      embeddingModel: data.embeddingModel !== undefined ? data.embeddingModel : null,
+      embeddingDimension: data.embeddingDimension !== undefined ? data.embeddingDimension : null,
       metadata: data.metadata || {},
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -1541,13 +1575,7 @@ export class InMemoryDatabaseService implements IDatabaseService {
   async searchVectorChunks(
     workspaceId: string,
     queryVector: number[],
-    options?: {
-      topK?: number;
-      documentIds?: string[];
-      fileTypes?: string[];
-      pageStart?: number;
-      pageEnd?: number;
-    },
+    options?: SearchVectorChunksOptions,
   ): Promise<SearchChunkResult[]> {
     const topK = Math.min(Math.max(options?.topK || 10, 1), 50);
     const results: SearchChunkResult[] = [];
@@ -1558,6 +1586,11 @@ export class InMemoryDatabaseService implements IDatabaseService {
       if (chunk.workspaceId !== workspaceId) continue;
       const doc = this.documents.get(chunk.documentId);
       if (!doc || doc.workspaceId !== workspaceId || doc.status !== 'COMPLETED') continue;
+
+      // Invariants A, B, C, D: Model-aware compatibility gating
+      if (!EmbeddingModelPolicy.isDocumentCompatible(options?.embeddingModel, doc.embeddingModel)) {
+        continue;
+      }
 
       if (options?.documentIds && options.documentIds.length > 0) {
         if (!options.documentIds.includes(chunk.documentId)) continue;

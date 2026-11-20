@@ -383,3 +383,4 @@ model CompanionDevice {
   @@map("companion_devices")
 }
 
+

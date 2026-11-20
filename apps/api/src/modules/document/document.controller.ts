@@ -140,18 +140,19 @@ export class DocumentController {
       const documentId = req.params.id;
       const workspaceId = this.getAuthorizedWorkspaceId(req);
 
-      const { buffer, originalName, mimeType } = await this.documentService.downloadDocument(
-        workspaceId,
-        documentId,
-      );
+      const { stream, originalName, mimeType, contentLength } =
+        await this.documentService.streamDocument(workspaceId, documentId);
 
       res.setHeader('Content-Type', mimeType || 'application/octet-stream');
       res.setHeader(
         'Content-Disposition',
         `attachment; filename="${encodeURIComponent(originalName)}"`,
       );
-      res.setHeader('Content-Length', buffer.length);
-      res.status(200).send(buffer);
+      if (contentLength) {
+        res.setHeader('Content-Length', contentLength);
+      }
+      res.status(200);
+      (stream as any).pipe(res);
     } catch (err) {
       next(err);
     }

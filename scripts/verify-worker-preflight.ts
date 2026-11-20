@@ -5,7 +5,7 @@
  * 1. Windows 11 host runtime & environment variable validation.
  * 2. Cloud Upstash Redis TLS connection & queue readiness.
  * 3. Cloud/Local PostgreSQL database connectivity and pgvector extension.
- * 4. Local Ollama AI service availability and required models (nomic-embed-text & qwen3:0.6b).
+ * 4. Google Gemini AI service configuration & credential validation.
  * 5. Storage directory accessibility.
  *
  * Exit Codes:
@@ -254,69 +254,29 @@ async function runWorkerPreflight(): Promise<void> {
   }
 
   // -------------------------------------------------------------------------
-  // 4. Local Ollama & Required Models Check
+  // 4. Google Gemini Cloud AI Readiness Check
   // -------------------------------------------------------------------------
-  console.log(`\n${colors.bold}[4/5] Checking Local Ollama AI Readiness...${colors.reset}`);
-  const ollamaBaseUrl = (process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434').replace(
-    /\/$/,
-    '',
-  );
-  const genModel = process.env.OLLAMA_GENERATION_MODEL || 'qwen3:0.6b';
-  const embedModel = process.env.EMBEDDING_MODEL || 'nomic-embed-text';
+  console.log(`\n${colors.bold}[4/5] Checking Google Gemini AI Readiness...${colors.reset}`);
+  const geminiApiKey = process.env.GEMINI_API_KEY;
+  const geminiModel = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
+  const embedModel = process.env.GEMINI_EMBEDDING_MODEL || process.env.EMBEDDING_MODEL || 'gemini-embedding-2';
 
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3000);
-    const res = await fetch(`${ollamaBaseUrl}/api/tags`, { signal: controller.signal });
-    clearTimeout(timeout);
-
-    if (res.ok) {
-      const data = (await res.json()) as { models?: Array<{ name: string }> };
-      const installed = (data.models || []).map((m) => m.name.toLowerCase());
-      console.log(`  ${colors.green}[ PASS ] Ollama online at ${ollamaBaseUrl}${colors.reset}`);
-
-      const isModelInstalled = (target: string): boolean => {
-        const lower = target.toLowerCase();
-        return installed.some(
-          (m) => m === lower || m.startsWith(`${lower}:`) || (lower.includes(':') && m === lower),
-        );
-      };
-
-      if (isModelInstalled(embedModel)) {
-        console.log(
-          `  ${colors.green}[ PASS ] Embedding model '${embedModel}' installed${colors.reset}`,
-        );
-      } else {
-        console.log(
-          `  ${colors.red}[ FAIL ] Missing embedding model '${embedModel}'. Run: 'ollama pull ${embedModel}'${colors.reset}`,
-        );
-        allPassed = false;
-      }
-
-      if (isModelInstalled(genModel)) {
-        console.log(
-          `  ${colors.green}[ PASS ] Generation model '${genModel}' installed${colors.reset}`,
-        );
-      } else {
-        console.log(
-          `  ${colors.red}[ FAIL ] Missing generation model '${genModel}'. Run: 'ollama pull ${genModel}'${colors.reset}`,
-        );
-        allPassed = false;
-      }
-    } else {
-      console.log(
-        `  ${colors.red}[ FAIL ] Ollama endpoint responded with HTTP ${res.status}${colors.reset}`,
-      );
-      allPassed = false;
-    }
-  } catch (err: any) {
+  if (!geminiApiKey || geminiApiKey.trim().length === 0) {
     console.log(
-      `  ${colors.red}[ FAIL ] Ollama unreachable at ${ollamaBaseUrl}: ${err.message}${colors.reset}`,
+      `  ${colors.red}[ FAIL ] Missing GEMINI_API_KEY in environment variables.${colors.reset}`,
     );
     console.log(
-      `  ${colors.yellow}[ ACTION ] Ensure Ollama is running: execute 'ollama serve' in PowerShell.${colors.reset}`,
+      `  ${colors.yellow}[ ACTION ] Add GEMINI_API_KEY to your .env file from Google AI Studio.${colors.reset}`,
     );
     allPassed = false;
+  } else {
+    const masked = `${geminiApiKey.slice(0, 4)}...${geminiApiKey.slice(-4)} (length ${geminiApiKey.length})`;
+    console.log(
+      `  ${colors.green}[ PASS ] Gemini API Key configured: ${masked}${colors.reset}`,
+    );
+    console.log(
+      `  ${colors.green}[ PASS ] Target models: generation='${geminiModel}', embedding='${embedModel}' (768-D)${colors.reset}`,
+    );
   }
 
   // -------------------------------------------------------------------------

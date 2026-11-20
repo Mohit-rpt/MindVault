@@ -225,12 +225,40 @@ export interface PaginatedResponse<T> {
   totalPages: number;
 }
 
-// Ingestion Pipeline Interfaces
+// Ingestion Pipeline & Object Storage Interfaces
+export interface StorageObjectMetadata {
+  contentLength: number;
+  contentType?: string;
+  checksum?: string;
+  lastModified?: Date;
+}
+
+export interface WorkspaceQuotaLimits {
+  maxDocuments: number;
+  maxStorageBytes: number;
+  maxFileSizeBytes: number;
+  maxChatMessagesPerDay: number;
+}
+
+export interface WorkspaceQuotaUsage {
+  documentCount: number;
+  storageBytes: number;
+  chatMessagesToday: number;
+}
+
 export interface DocumentStorageProvider {
-  save(storageKey: string, buffer: Buffer): Promise<void>;
+  save(storageKey: string, buffer: Buffer, metadata?: { contentType?: string }): Promise<void>;
   read(storageKey: string): Promise<Buffer>;
   delete(storageKey: string): Promise<void>;
   exists(storageKey: string): Promise<boolean>;
+  getMetadata?(storageKey: string): Promise<StorageObjectMetadata | null>;
+  saveStream?(
+    storageKey: string,
+    stream: NodeJS.ReadableStream,
+    metadata?: { contentType?: string; contentLength?: number },
+  ): Promise<void>;
+  readStream?(storageKey: string): Promise<NodeJS.ReadableStream>;
+  deleteMany?(storageKeys: string[]): Promise<void>;
 }
 
 export interface ExtractedPage {
@@ -654,7 +682,7 @@ export const SendConversationMessageRequestSchema = z.object({
     .trim()
     .min(1, { message: 'Message content cannot be empty' })
     .max(4000, { message: 'Message content cannot exceed 4000 characters' }),
-  provider: z.enum(['ollama', 'gemini']).optional(),
+  provider: z.enum(['gemini', 'mock']).optional(),
   model: z.string().optional(),
   image: z
     .object({

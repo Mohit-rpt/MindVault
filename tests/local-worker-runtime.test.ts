@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { validateOllamaEnvironment } from '../apps/worker/src/lib/ollama-validator.js';
+import { validateGeminiEnvironment } from '../apps/worker/src/lib/gemini-validator.js';
 import {
   WorkerHeartbeatService,
   WORKER_HEARTBEAT_REDIS_KEY,
@@ -19,67 +19,43 @@ describe('MindVault — Local Windows Worker Runtime & Ingestion Tests', () => {
   });
 
   // =========================================================================
-  // 1. Ollama Preflight Validation Tests
+  // 1. Google Gemini Preflight Validation Tests
   // =========================================================================
-  describe('Ollama Environment Validator', () => {
-    it('returns ready=true and status=ONLINE when required models are installed', async () => {
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({
-          models: [
-            { name: 'nomic-embed-text:latest' },
-            { name: 'qwen3:0.6b' },
-            { name: 'llama3:8b' },
-          ],
-        }),
-      } as any);
-
-      const result = await validateOllamaEnvironment({
-        baseUrl: 'http://127.0.0.1:11434',
-        generationModel: 'qwen3:0.6b',
-        embeddingModel: 'nomic-embed-text',
+  describe('Gemini Environment Validator', () => {
+    it('returns ready=true and status=READY when API key is configured', () => {
+      const result = validateGeminiEnvironment({
+        apiKey: 'AIzaSyD-valid-mock-gemini-key-12345678',
+        model: 'gemini-embedding-2',
       });
 
       expect(result.ready).toBe(true);
-      expect(result.status).toBe('ONLINE');
-      expect(result.missingModels).toHaveLength(0);
-      expect(result.installedModels).toContain('nomic-embed-text:latest');
+      expect(result.status).toBe('READY');
+      expect(result.maskedKey).toContain('AIza...');
+      expect(result.maskedKey).toContain('length 38');
+      expect(result.missingRequirements).toHaveLength(0);
     });
 
-    it('returns ready=false and status=MODEL_MISSING with actionable command when a model is missing', async () => {
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({
-          models: [{ name: 'nomic-embed-text:latest' }],
-        }),
-      } as any);
-
-      const result = await validateOllamaEnvironment({
-        baseUrl: 'http://127.0.0.1:11434',
-        generationModel: 'qwen3:0.6b',
-        embeddingModel: 'nomic-embed-text',
+    it('returns ready=false and status=MISSING_API_KEY when key is missing', () => {
+      const result = validateGeminiEnvironment({
+        apiKey: '',
+        model: 'gemini-embedding-2',
       });
 
       expect(result.ready).toBe(false);
-      expect(result.status).toBe('MODEL_MISSING');
-      expect(result.missingModels).toContain('qwen3:0.6b');
-      expect(result.remediation).toContain('ollama pull qwen3:0.6b');
+      expect(result.status).toBe('MISSING_API_KEY');
+      expect(result.missingRequirements).toContain('GEMINI_API_KEY');
+      expect(result.remediation).toContain('Add GEMINI_API_KEY to your .env file');
     });
 
-    it('returns ready=false and status=UNREACHABLE when Ollama endpoint is down', async () => {
-      global.fetch = vi.fn().mockRejectedValue(new Error('connect ECONNREFUSED 127.0.0.1:11434'));
-
-      const result = await validateOllamaEnvironment({
-        baseUrl: 'http://127.0.0.1:11434',
-        generationModel: 'qwen3:0.6b',
-        embeddingModel: 'nomic-embed-text',
+    it('rejects unapproved embedding model with INVALID_MODEL', () => {
+      const result = validateGeminiEnvironment({
+        apiKey: 'AIzaSyD-valid-mock-gemini-key-12345678',
+        model: 'unsupported-model-v99',
       });
 
       expect(result.ready).toBe(false);
-      expect(result.status).toBe('UNREACHABLE');
-      expect(result.remediation).toContain('ollama serve');
+      expect(result.status).toBe('INVALID_MODEL');
+      expect(result.remediation).toContain('gemini-embedding-2');
     });
   });
 

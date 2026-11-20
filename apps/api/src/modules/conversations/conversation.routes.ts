@@ -14,10 +14,24 @@
  * All routes require authentication and MEMBER role in the target workspace.
  */
 
-import { Router } from 'express';
+import { Request, Response, NextFunction, Router } from 'express';
 import { authenticate } from '../../middleware/authenticate.js';
 import { authorizeWorkspace } from '../../middleware/authorizeWorkspace.js';
 import { ConversationController } from './conversation.controller.js';
+import { distributedChatRateLimiter } from '../../middleware/redisRateLimiter.js';
+import { quotaService } from '../../services/quota.service.js';
+
+const chatQuotaGuard = async (req: Request, _res: Response, next: NextFunction) => {
+  try {
+    const user = (req as any).user;
+    if (user?.id) {
+      await quotaService.checkChatQuota(user.id);
+    }
+    next();
+  } catch (err) {
+    next(err);
+  }
+};
 
 export function createConversationRouter(): Router {
   const router: Router = Router();
@@ -63,11 +77,13 @@ export function createConversationRouter(): Router {
     ConversationController.delete,
   );
 
-  // Stream conversational response via SSE
+  // Stream conversational response via SSE (governed by distributed rate limit & AI quota)
   router.post(
     '/:sessionId/messages/stream',
     authenticate,
     authorizeWorkspace('MEMBER'),
+    distributedChatRateLimiter,
+    chatQuotaGuard,
     ConversationController.streamMessage,
   );
 

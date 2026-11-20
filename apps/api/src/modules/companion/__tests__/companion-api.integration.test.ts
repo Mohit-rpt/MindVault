@@ -374,7 +374,7 @@ describe('MindVault Cloud API — Companion Device & Job Status Endpoints', () =
     expect(res.body.status).toBe('offline');
   });
 
-  it('health endpoint reports companion online with host metadata when heartbeat exists in Redis', async () => {
+  it('health endpoint reports companion online with sanitized metadata and allows authorized diagnostics', async () => {
     mockRedisClient.get.mockResolvedValue(
       JSON.stringify({
         deviceId: 'dev-123',
@@ -385,10 +385,27 @@ describe('MindVault Cloud API — Companion Device & Job Status Endpoints', () =
       }),
     );
 
-    const res = await request(app).get('/api/health/companion');
-    expect(res.status).toBe(200);
-    expect(res.body.status).toBe('online');
-    expect(res.body.deviceName).toBe('Mohit-Win11');
-    expect(res.body.workerState).toBe('STOPPED');
+    // Public request: host telemetry sanitized
+    const publicRes = await request(app).get('/api/health/companion');
+    expect(publicRes.status).toBe(200);
+    expect(publicRes.body.status).toBe('online');
+    expect(publicRes.body.workerState).toBe('STOPPED');
+    expect(publicRes.body.deviceName).toBeUndefined();
+    expect(publicRes.body.deviceId).toBeUndefined();
+
+    // Authorized request with diagnostics token: full host metadata
+    process.env.INTERNAL_DIAGNOSTICS_TOKEN = 'test-diag-token';
+    try {
+      const authRes = await request(app)
+        .get('/api/health/companion')
+        .set('x-diagnostics-token', 'test-diag-token');
+      expect(authRes.status).toBe(200);
+      expect(authRes.body.status).toBe('online');
+      expect(authRes.body.deviceName).toBe('Mohit-Win11');
+      expect(authRes.body.deviceId).toBe('dev-123');
+      expect(authRes.body.workerState).toBe('STOPPED');
+    } finally {
+      delete process.env.INTERNAL_DIAGNOSTICS_TOKEN;
+    }
   });
 });

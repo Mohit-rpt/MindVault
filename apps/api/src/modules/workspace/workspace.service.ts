@@ -98,7 +98,39 @@ export class WorkspaceService {
   }
 
   async deleteWorkspace(workspaceId: string): Promise<void> {
+    // 1. Fetch document storage keys to prevent orphaned storage objects (§SEC-03)
+    let storageKeys: string[] = [];
+    try {
+      const { prisma } = await import('../../lib/prisma.js');
+      if (prisma.document?.findMany) {
+        const docs = await prisma.document.findMany({
+          where: { workspaceId },
+          select: { storageKey: true },
+        });
+        storageKeys = docs.map((d: any) => d.storageKey).filter(Boolean);
+      }
+    } catch {
+      // Non-blocking metadata pre-fetch
+    }
+
+    // 2. Cascade delete database records
     await dbService.deleteWorkspace(workspaceId);
+
+    // 3. Clean up physical storage objects
+    if (storageKeys.length > 0) {
+      try {
+        const { defaultStorageProvider } = await import('../document/document.storage.js');
+        if (typeof defaultStorageProvider.deleteMany === 'function') {
+          await defaultStorageProvider.deleteMany(storageKeys);
+        } else {
+          await Promise.all(storageKeys.map((k) => defaultStorageProvider.delete(k)));
+        }
+      } catch {
+        // Non-blocking physical storage cleanup
+      }
+    }
+
+    // 4. Clean BullMQ queues
     try {
       const { workspaceQueueService } = await import('./workspace-queue.service.js');
       await workspaceQueueService.cleanWorkspaceQueues(workspaceId);

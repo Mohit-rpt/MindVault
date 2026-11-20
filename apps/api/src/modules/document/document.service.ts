@@ -1,4 +1,6 @@
 import path from 'node:path';
+import crypto from 'node:crypto';
+import stream from 'node:stream';
 import type {
   DocumentDto,
   DocumentStatus,
@@ -11,6 +13,7 @@ import type { IDatabaseService, DocumentRecord } from '../../lib/db.js';
 import { dbService } from '../../lib/db.js';
 import { documentQueue, type IDocumentQueue } from './document.queue.js';
 import { AppError } from '../../middleware/errorHandler.js';
+import { quotaService } from '../../services/quota.service.js';
 
 export const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024; // 25 MB
 
@@ -105,37 +108,79 @@ export class DocumentService {
       );
     }
 
-    // 7. Generate secure storage key and persist file
-    const storageKey = LocalFileSystemStorageProvider.generateStorageKey(ext);
-    await this.storage.save(storageKey, buffer);
+    // 6.5. Atomic Quota Reservation (§ARC-02, §OPS-03)
+    const quotaReservation = await quotaService.reserveUploadQuota(workspaceId, buffer.length);
+
+    // 7. Generate secure hierarchical storage key and persist file
+    const documentId = crypto.randomUUID();
+    const storageKey = LocalFileSystemStorageProvider.generateStorageKey({
+      workspaceId,
+      documentId,
+      extension: ext,
+    });
+
+    try {
+      await this.storage.save(storageKey, buffer, { contentType: params.mimeType });
+    } catch (storageErr) {
+      await quotaReservation.release();
+      throw storageErr;
+    }
 
     // 8. Create Document Record with UPLOADED status
-    let docRecord = await this.db.createDocument({
-      workspaceId,
-      uploadedById,
-      originalName: sanitizedName,
-      mimeType: params.mimeType,
-      extension: ext,
-      sizeBytes: BigInt(buffer.length),
-      checksum,
-      storageKey,
-      status: 'UPLOADED',
-      metadata: {
-        originalMimeType: params.mimeType,
-        uploadedAt: new Date().toISOString(),
-        rawContentBase64: buffer.toString('base64'),
-      },
-    });
+    let docRecord: DocumentRecord;
+    try {
+      docRecord = await this.db.createDocument({
+        id: documentId,
+        workspaceId,
+        uploadedById,
+        originalName: sanitizedName,
+        mimeType: params.mimeType,
+        extension: ext,
+        sizeBytes: BigInt(buffer.length),
+        checksum,
+        storageKey,
+        status: 'UPLOADED',
+        metadata: {
+          originalMimeType: params.mimeType,
+          uploadedAt: new Date().toISOString(),
+          ...(process.env.STORE_BASE64_IN_METADATA === 'true'
+            ? { rawContentBase64: buffer.toString('base64') }
+            : {}),
+        },
+      });
+    } catch (dbErr) {
+      await quotaReservation.release();
+      try {
+        await this.storage.delete(storageKey);
+      } catch {
+        // Non-blocking cleanup
+      }
+      throw dbErr;
+    }
 
-    // 9. Coordinate BullMQ job enqueue with capability routing
-    const requiresLocal = (params as any).requiresLocal ?? true;
-    await this.queue.enqueue({
-      documentId: docRecord.id,
-      workspaceId,
-      userId: uploadedById,
-      capability: requiresLocal ? 'local' : 'cloud',
-      requiresLocal,
-    });
+    // 9. Coordinate BullMQ job enqueue with capability routing (defaulting to cloud queue)
+    const requiresLocal = (params as any).requiresLocal ?? false;
+    try {
+      await this.queue.enqueue({
+        documentId: docRecord.id,
+        workspaceId,
+        userId: uploadedById,
+        capability: requiresLocal ? 'local' : 'cloud',
+        requiresLocal,
+      });
+      await quotaReservation.commit();
+    } catch (queueErr) {
+      await quotaReservation.release();
+      try {
+        await this.db.updateDocument(docRecord.id, {
+          status: 'FAILED',
+          errorMessage: 'Failed to enqueue processing job in queue broker',
+        });
+      } catch {
+        // Non-blocking
+      }
+      throw queueErr;
+    }
 
     // 10. Update status to QUEUED
     docRecord = await this.db.updateDocument(docRecord.id, {
@@ -250,6 +295,58 @@ export class DocumentService {
       buffer,
       originalName: doc.originalName,
       mimeType: doc.mimeType,
+    };
+  }
+
+  public async streamDocument(
+    workspaceId: string,
+    documentId: string,
+  ): Promise<{
+    stream: NodeJS.ReadableStream;
+    originalName: string;
+    mimeType: string;
+    contentLength?: number;
+  }> {
+    const doc = await this.db.findDocumentById(documentId);
+    if (!doc || doc.workspaceId !== workspaceId) {
+      throw new AppError(404, 'DOCUMENT_NOT_FOUND', 'Document not found');
+    }
+
+    if (typeof this.storage.readStream === 'function') {
+      try {
+        const streamData = await this.storage.readStream(doc.storageKey);
+        let contentLength: number | undefined;
+        if (typeof this.storage.getMetadata === 'function') {
+          const meta = await this.storage.getMetadata(doc.storageKey);
+          if (meta) contentLength = meta.contentLength;
+        }
+        return {
+          stream: streamData,
+          originalName: doc.originalName,
+          mimeType: doc.mimeType,
+          contentLength: contentLength || Number(doc.sizeBytes),
+        };
+      } catch (err: any) {
+        if ((doc.metadata as any)?.rawContentBase64) {
+          const buf = Buffer.from((doc.metadata as any).rawContentBase64, 'base64');
+          return {
+            stream: stream.Readable.from(buf),
+            originalName: doc.originalName,
+            mimeType: doc.mimeType,
+            contentLength: buf.length,
+          };
+        }
+        throw err;
+      }
+    }
+
+    // Fallback if readStream not implemented on storage provider
+    const { buffer, originalName, mimeType } = await this.downloadDocument(workspaceId, documentId);
+    return {
+      stream: stream.Readable.from(buffer),
+      originalName,
+      mimeType,
+      contentLength: buffer.length,
     };
   }
 

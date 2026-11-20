@@ -1,8 +1,9 @@
-import { Router } from 'express';
+import { Request, Response, NextFunction, Router } from 'express';
 import multer from 'multer';
 import { DocumentController } from './document.controller.js';
 import { authenticate } from '../../middleware/authenticate.js';
 import { authorizeWorkspace } from '../../middleware/authorizeWorkspace.js';
+import { distributedUploadRateLimiter } from '../../middleware/redisRateLimiter.js';
 import { MAX_FILE_SIZE_BYTES } from './document.service.js';
 
 const upload = multer({
@@ -12,6 +13,18 @@ const upload = multer({
   },
 });
 
+/**
+ * Pre-upload workspace guard (§SEC-01).
+ * If x-workspace-id header or ?workspaceId query parameter is provided,
+ * verifies workspace authorization BEFORE Multer consumes the multipart stream.
+ */
+const preUploadWorkspaceGuard = (req: Request, res: Response, next: NextFunction) => {
+  if (req.headers['x-workspace-id'] || req.query?.workspaceId) {
+    return authorizeWorkspace('MEMBER')(req, res, next);
+  }
+  next();
+};
+
 export function createDocumentRouter(
   controller: DocumentController = new DocumentController(),
 ): Router {
@@ -20,8 +33,15 @@ export function createDocumentRouter(
   // All document routes require authentication
   router.use(authenticate);
 
-  // POST /api/documents/upload - Multipart file upload
-  router.post('/upload', upload.single('file'), authorizeWorkspace('MEMBER'), controller.upload);
+  // POST /api/documents/upload - Multipart file upload with rate limiting and pre-auth buffer protection
+  router.post(
+    '/upload',
+    distributedUploadRateLimiter,
+    preUploadWorkspaceGuard,
+    upload.single('file'),
+    authorizeWorkspace('MEMBER'),
+    controller.upload,
+  );
 
   // GET /api/documents - List documents in workspace
   router.get('/', authorizeWorkspace('MEMBER'), controller.list);

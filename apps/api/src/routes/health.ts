@@ -210,7 +210,7 @@ healthRouter.get('/', async (_req: Request, res: Response) => {
 });
 
 // Worker observability probe – inspects background worker heartbeat in Redis without affecting API readiness
-healthRouter.get('/worker', async (_req: Request, res: Response) => {
+healthRouter.get('/worker', async (req: Request, res: Response) => {
   try {
     const client = getRedisHealthClient();
     if (!client) {
@@ -232,16 +232,40 @@ healthRouter.get('/worker', async (_req: Request, res: Response) => {
     }
 
     const data = JSON.parse(raw);
+
+    // Check for authorized diagnostics token (§SEC-03)
+    const token = process.env.INTERNAL_DIAGNOSTICS_TOKEN || env.INTERNAL_DIAGNOSTICS_TOKEN;
+    const authHeader = req.headers['authorization'];
+    const diagHeader = req.headers['x-diagnostics-token'];
+    const diagQuery = typeof req.query.token === 'string' ? req.query.token : undefined;
+    const isAuthorized = Boolean(
+      token &&
+        ((diagHeader && diagHeader === token) ||
+          (diagQuery && diagQuery === token) ||
+          (authHeader && authHeader === `Bearer ${token}`)),
+    );
+
+    if (isAuthorized) {
+      res.status(200).json({
+        status: data.status || 'online',
+        workerId: data.workerId,
+        lastHeartbeatAt: data.lastHeartbeatAt,
+        lastJobAt: data.lastJobAt,
+        lastJobId: data.lastJobId,
+        lastDocId: data.lastDocId,
+        concurrency: data.concurrency,
+        environment: data.environment,
+        system: data.system,
+      });
+      return;
+    }
+
+    // Public sanitized operational status (zero physical host info, zero document IDs)
     res.status(200).json({
       status: data.status || 'online',
-      workerId: data.workerId,
       lastHeartbeatAt: data.lastHeartbeatAt,
-      lastJobAt: data.lastJobAt,
-      lastJobId: data.lastJobId,
-      lastDocId: data.lastDocId,
       concurrency: data.concurrency,
       environment: data.environment,
-      system: data.system,
     });
   } catch (err: any) {
     res.status(200).json({
@@ -252,7 +276,7 @@ healthRouter.get('/worker', async (_req: Request, res: Response) => {
 });
 
 // Companion observability probe – inspects local companion heartbeat in Redis
-healthRouter.get('/companion', async (_req: Request, res: Response) => {
+healthRouter.get('/companion', async (req: Request, res: Response) => {
   try {
     const client = getRedisHealthClient();
     if (!client) {
@@ -273,16 +297,39 @@ healthRouter.get('/companion', async (_req: Request, res: Response) => {
     }
 
     const data = JSON.parse(raw);
+
+    // Check for authorized diagnostics token (§SEC-03)
+    const token = process.env.INTERNAL_DIAGNOSTICS_TOKEN || env.INTERNAL_DIAGNOSTICS_TOKEN;
+    const authHeader = req.headers['authorization'];
+    const diagHeader = req.headers['x-diagnostics-token'];
+    const diagQuery = typeof req.query.token === 'string' ? req.query.token : undefined;
+    const isAuthorized = Boolean(
+      token &&
+        ((diagHeader && diagHeader === token) ||
+          (diagQuery && diagQuery === token) ||
+          (authHeader && authHeader === `Bearer ${token}`)),
+    );
+
+    if (isAuthorized) {
+      res.status(200).json({
+        status: 'online',
+        deviceId: data.deviceId,
+        deviceName: data.deviceName,
+        companionStatus: data.companionStatus,
+        workerState: data.workerState,
+        uptimeSeconds: data.uptimeSeconds,
+        idleCountdownSeconds: data.idleCountdownSeconds,
+        activeJobsCount: data.activeJobsCount,
+        system: data.system,
+      });
+      return;
+    }
+
+    // Public sanitized operational status (zero physical host info, zero device IDs)
     res.status(200).json({
       status: 'online',
-      deviceId: data.deviceId,
-      deviceName: data.deviceName,
       companionStatus: data.companionStatus,
       workerState: data.workerState,
-      uptimeSeconds: data.uptimeSeconds,
-      idleCountdownSeconds: data.idleCountdownSeconds,
-      activeJobsCount: data.activeJobsCount,
-      system: data.system,
     });
   } catch (err: any) {
     res.status(200).json({

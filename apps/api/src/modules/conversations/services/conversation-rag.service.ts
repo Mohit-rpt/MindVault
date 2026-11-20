@@ -218,6 +218,11 @@ export class ConversationRAGService {
         throw new Error('CLIENT_ABORTED');
       }
 
+      // FINDING-5: Prevent empty assistant messages from becoming successful COMPLETED responses
+      if (accumulatedText.trim().length === 0) {
+        throw new Error('Model produced an empty generation response.');
+      }
+
       const generationDurationMs = Math.round((performance.now() - genStart) * 100) / 100;
 
       // 10. Citation & Grounding Validation

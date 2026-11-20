@@ -227,8 +227,8 @@ describe('MindVault Health Endpoints — Integration Suite', () => {
     expect(res.body.message).toContain('No active worker heartbeat found');
   });
 
-  // 13. Worker Probe — Online State
-  it('13. Worker probe returns HTTP 200 with status "online" and host telemetry when heartbeat exists', async () => {
+  // 13. Worker Probe — Sanitized Public Response & Protected Diagnostics (§SEC-03)
+  it('13. Worker probe sanitizes public telemetry and allows authorized diagnostics', async () => {
     const mockHeartbeat = {
       workerId: 'win-worker-test',
       status: 'online',
@@ -259,15 +259,19 @@ describe('MindVault Health Endpoints — Integration Suite', () => {
     } as any);
 
     const app = createApp();
-    const res = await request(app).get('/api/health/worker');
 
-    expect(res.status).toBe(200);
-    expect(res.body.status).toBe('online');
-    expect(res.body.workerId).toBe('win-worker-test');
-    expect(res.body.concurrency).toBe(1);
-    expect(res.body.lastJobId).toBe('job-xyz-123');
-    expect(res.body.lastDocId).toBe('doc-abc-456');
-    expect(res.body.system.platform).toBe('win32');
+    // 13a. Public unauthenticated request — strictly sanitized
+    const publicRes = await request(app).get('/api/health/worker');
+    expect(publicRes.status).toBe(200);
+    expect(publicRes.body.status).toBe('online');
+    expect(publicRes.body.concurrency).toBe(1);
+    expect(publicRes.body.environment).toBe('development');
+    expect(publicRes.body.lastHeartbeatAt).toBe('2026-11-14T10:05:00.000Z');
+    // Ensure zero physical host leaks or user/document identifiers
+    expect(publicRes.body.workerId).toBeUndefined();
+    expect(publicRes.body.system).toBeUndefined();
+    expect(publicRes.body.lastJobId).toBeUndefined();
+    expect(publicRes.body.lastDocId).toBeUndefined();
   });
 
   // 14. Worker Offline Isolation — API Live and Ready Unaffected
