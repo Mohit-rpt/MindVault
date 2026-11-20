@@ -226,34 +226,14 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
         {/* Composer Controls Bar */}
         <div className="flex items-center justify-between gap-2 pt-2 border-t border-theme-border/40 mt-1">
           <div className="flex items-center gap-1.5 flex-wrap">
-            {/* Model Selector Pill */}
-            <div className="flex items-center rounded-lg border border-theme-border bg-theme-surface-secondary p-0.5 text-xs">
-              <button
-                type="button"
-                onClick={() => setProvider('gemini')}
-                className={`flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium transition-all ${
-                  provider === 'gemini'
-                    ? 'bg-theme-surface text-theme-text shadow-subtle border border-theme-border/80'
-                    : 'text-theme-text-muted hover:text-theme-text'
-                }`}
-                title="Google Gemini Flash: Ultra-fast cloud reasoning + vision"
-              >
-                <span>⚡</span>
-                <span className="font-medium">Gemini</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setProvider('ollama')}
-                className={`flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium transition-all ${
-                  provider === 'ollama'
-                    ? 'bg-theme-surface text-theme-text shadow-subtle border border-theme-border/80'
-                    : 'text-theme-text-muted hover:text-theme-text'
-                }`}
-                title="Local Ollama Qwen3: 100% private offline"
-              >
-                <span>🦙</span>
-                <span className="font-medium">Ollama</span>
-              </button>
+            {/* Active Gemini Model Badge */}
+            <div
+              className="flex items-center gap-1.5 px-2 py-1 rounded-lg border border-theme-border/70 bg-theme-surface-secondary/60 text-[11px] text-theme-text-secondary select-none"
+              title="Powered by Google Gemini 3.5 Flash (reasoning + vision enabled)"
+            >
+              <Zap className="w-3 h-3 text-amber-600 dark:text-amber-400 fill-current" />
+              <span className="font-medium text-theme-text">Gemini 3.5 Flash</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" title="Connected & Ready" />
             </div>
 
             {/* Image Attachment Button */}

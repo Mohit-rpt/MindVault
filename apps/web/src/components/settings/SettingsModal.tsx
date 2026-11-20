@@ -325,45 +325,63 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             {activeTab === 'models' && (
               <div className="space-y-4">
                 <div>
-                  <h4 className="font-medium text-theme-text text-sm mb-1">Configured Providers</h4>
+                  <h4 className="font-medium text-theme-text text-sm mb-1">Active AI Architecture</h4>
                   <p className="text-theme-text-secondary text-xs">
-                    MindVault integrates both Google Gemini Cloud and Local Ollama inference.
+                    MindVault is powered by Google Gemini for low-latency reasoning, dense vector embeddings, and Knowledge Graph extraction.
                   </p>
                 </div>
 
                 <div className="space-y-2.5">
-                  {/* Gemini Card */}
-                  <div className="p-3.5 rounded-xl border border-theme-border bg-theme-surface-secondary/30 flex items-center justify-between">
+                  {/* Gemini Generation Card */}
+                  <div className="p-3.5 rounded-xl border border-theme-border bg-theme-surface-secondary/40 flex items-center justify-between">
                     <div className="space-y-0.5">
                       <div className="flex items-center gap-2 font-medium text-theme-text">
-                        <span>⚡ Google Gemini Flash</span>
-                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 font-mono">
-                          gemini-3.5-flash
+                        <span className="text-amber-600 dark:text-amber-400 font-semibold">⚡ Generation & Reasoning</span>
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-700 dark:text-amber-400 font-mono font-medium border border-amber-500/20">
+                          gemini-3.5-flash-lite
                         </span>
                       </div>
                       <p className="text-[11px] text-theme-text-secondary">
-                        Ultra-fast streaming reasoning + multimodal image interpretation.
+                        Real-time streaming RAG responses, strict factual grounding, and multimodal vision.
                       </p>
                     </div>
-                    <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
-                      Connected
+                    <span className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                      Active
                     </span>
                   </div>
 
-                  {/* Ollama Card */}
-                  <div className="p-3.5 rounded-xl border border-theme-border bg-theme-surface-secondary/30 flex items-center justify-between">
+                  {/* Gemini Embeddings Card */}
+                  <div className="p-3.5 rounded-xl border border-theme-border bg-theme-surface-secondary/40 flex items-center justify-between">
                     <div className="space-y-0.5">
                       <div className="flex items-center gap-2 font-medium text-theme-text">
-                        <span>🦙 Ollama Local</span>
-                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-500/15 text-purple-600 dark:text-purple-400 font-mono">
-                          qwen3:0.6b
+                        <span className="text-blue-600 dark:text-blue-400 font-semibold">🔍 Dense Vector Embeddings</span>
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-500/15 text-blue-700 dark:text-blue-400 font-mono font-medium border border-blue-500/20">
+                          gemini-embedding-2 (768-D)
                         </span>
                       </div>
                       <p className="text-[11px] text-theme-text-secondary">
-                        100% private, on-device offline inference (http://localhost:11434).
+                        Normalized dense vectors with pgvector cosine similarity search and RRF hybrid ranking.
                       </p>
                     </div>
-                    <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
+                    <span className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                      Active
+                    </span>
+                  </div>
+
+                  {/* Gemini Knowledge Graph Card */}
+                  <div className="p-3.5 rounded-xl border border-theme-border bg-theme-surface-secondary/40 flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2 font-medium text-theme-text">
+                        <span className="text-purple-600 dark:text-purple-400 font-semibold">🕸️ Knowledge Graph Extraction</span>
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-500/15 text-purple-700 dark:text-purple-400 font-mono font-medium border border-purple-500/20">
+                          Structured GraphRAG
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-theme-text-secondary">
+                        Automated entity recognition, typed relations, and chunk-level evidence verification.
+                      </p>
+                    </div>
+                    <span className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
                       Active
                     </span>
                   </div>

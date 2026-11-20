@@ -19,6 +19,8 @@ import {
   LogOut,
   FolderGit2,
   Check,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 
 export interface SidebarProps {
@@ -93,17 +95,18 @@ export const ConversationSidebar: React.FC<SidebarProps> = ({
       {/* TOP SECTION: Brand, New Chat, Search */}
       <div className="p-3.5 space-y-3">
         {/* Brand Header */}
-        <div className="flex items-center justify-between">
+        <div className={`flex items-center ${isCollapsed ? 'flex-col gap-2' : 'justify-between'}`}>
           <div
             onClick={() => onSelectView('chat')}
-            className="flex items-center gap-2.5 cursor-pointer group"
+            className={`flex items-center gap-2.5 cursor-pointer group ${isCollapsed ? 'justify-center' : ''}`}
+            title="MindVault AI Assistant"
           >
             <div className="w-8 h-8 rounded-xl bg-theme-surface text-theme-accent border border-theme-border flex items-center justify-center shadow-subtle group-hover:border-theme-accent/50 transition-colors">
               <Sparkles className="w-4 h-4" />
             </div>
             {!isCollapsed && (
               <div className="flex flex-col">
-                <span className="font-semibold text-sm tracking-tight text-theme-text">
+                <span className="font-semibold text-sm tracking-tight text-theme-text font-serif">
                   MindVault
                 </span>
                 <span className="text-[10px] text-theme-text-muted">Knowledge Companion</span>
@@ -111,13 +114,28 @@ export const ConversationSidebar: React.FC<SidebarProps> = ({
             )}
           </div>
 
-          {/* Mobile close button */}
-          <button
-            onClick={onCloseMobile}
-            className="lg:hidden p-1.5 rounded-lg text-theme-text-muted hover:text-theme-text"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            {/* Desktop collapse toggle */}
+            <button
+              type="button"
+              onClick={onToggleCollapse}
+              className="hidden lg:flex p-1.5 rounded-lg text-theme-text-muted hover:text-theme-text hover:bg-theme-surface transition-colors"
+              title={isCollapsed ? 'Expand sidebar (⌘B)' : 'Collapse sidebar (⌘B)'}
+              aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            >
+              {isCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
+            </button>
+
+            {/* Mobile close button */}
+            <button
+              type="button"
+              onClick={onCloseMobile}
+              className="lg:hidden p-1.5 rounded-lg text-theme-text-muted hover:text-theme-text hover:bg-theme-surface transition-colors"
+              aria-label="Close sidebar"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* New Chat Button */}
@@ -222,6 +240,17 @@ export const ConversationSidebar: React.FC<SidebarProps> = ({
         {/* Collapsed Icons Navigation */}
         {isCollapsed && (
           <div className="space-y-1.5 pt-2 border-t border-theme-border/40 flex flex-col items-center">
+            <button
+              onClick={() => {
+                onSelectView('chat');
+                onNewSession();
+              }}
+              className="p-2 rounded-xl transition-colors bg-theme-accent text-white hover:bg-theme-accent-hover shadow-subtle mb-1"
+              title="New Conversation (⌘K)"
+              aria-label="New Conversation"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
             <button
               onClick={() => onSelectView('chat')}
               className={`p-2 rounded-xl transition-colors ${
@@ -366,7 +395,7 @@ export const ConversationSidebar: React.FC<SidebarProps> = ({
                 <FolderGit2 className="w-3.5 h-3.5 text-theme-accent shrink-0" />
                 <span className="truncate font-medium text-theme-text">{activeWorkspace.name}</span>
               </div>
-              <span className="text-[10px] px-1.5 py-0.2 rounded bg-theme-surface-secondary text-theme-accent uppercase font-mono">
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-theme-surface-secondary text-theme-accent uppercase font-mono">
                 {activeWorkspace.role || 'Member'}
               </span>
             </button>
@@ -411,7 +440,7 @@ export const ConversationSidebar: React.FC<SidebarProps> = ({
         )}
 
         {/* Footer Actions Row: Theme Toggle, Settings, User Sign Out */}
-        <div className="flex items-center justify-between pt-1">
+        <div className={`flex pt-1 ${isCollapsed ? 'flex-col items-center gap-1.5' : 'items-center justify-between'}`}>
           {/* User Info */}
           {!isCollapsed && user && (
             <div className="flex items-center gap-2 min-w-0 pr-1">
@@ -424,7 +453,7 @@ export const ConversationSidebar: React.FC<SidebarProps> = ({
             </div>
           )}
 
-          <div className="flex items-center gap-1 ml-auto">
+          <div className={`flex items-center gap-1 ${isCollapsed ? 'flex-col w-full' : 'ml-auto'}`}>
             {/* Theme Switcher Button */}
             <button
               onClick={toggleTheme}

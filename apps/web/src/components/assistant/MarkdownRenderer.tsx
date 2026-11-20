@@ -301,7 +301,7 @@ function renderInline(text: string, onCitationClick?: (id: string) => void): Rea
           key={index}
           type="button"
           onClick={() => onCitationClick && onCitationClick(part)}
-          className="inline-flex items-center mx-1 px-1.5 py-0.2 text-[11px] font-mono font-semibold rounded-md bg-theme-accent/15 text-theme-accent border border-theme-accent/30 hover:bg-theme-accent/25 hover:border-theme-accent/50 transition-all cursor-pointer"
+          className="inline-flex items-center mx-1 px-1.5 py-0.5 text-[11px] font-mono font-semibold rounded-md bg-theme-accent/15 text-theme-accent border border-theme-accent/30 hover:bg-theme-accent/25 hover:border-theme-accent/50 transition-all cursor-pointer"
           title={`View source evidence ${part}`}
         >
           {part}

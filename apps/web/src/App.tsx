@@ -365,7 +365,7 @@ const MainApp: React.FC = () => {
             </header>
 
             <div className="flex-1 overflow-hidden">
-              <KnowledgeGraphView />
+              <KnowledgeGraphView onNavigateToDocuments={() => setActiveView('documents')} />
             </div>
           </div>
         )}

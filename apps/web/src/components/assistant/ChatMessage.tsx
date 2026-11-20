@@ -114,17 +114,10 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                     MindVault
                   </span>
 
-                  {provider === 'gemini' ? (
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                      <Zap className="w-2.5 h-2.5 fill-current" />
-                      <span>Gemini Flash</span>
-                    </span>
-                  ) : provider === 'ollama' ? (
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
-                      <span>🦙 Ollama</span>
-                      {model && <span className="opacity-75">({model})</span>}
-                    </span>
-                  ) : null}
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
+                    <Zap className="w-2.5 h-2.5 fill-current" />
+                    <span>Gemini 3.5 Flash</span>
+                  </span>
                 </div>
 
                 <div className="flex items-center gap-1 text-[11px]">

@@ -48,7 +48,7 @@ export default defineConfig(({ mode }) => {
         '/api': {
           target: apiTarget,
           changeOrigin: true,
-          timeout: 180000,
+          timeout: 10000,
         },
       },
     },

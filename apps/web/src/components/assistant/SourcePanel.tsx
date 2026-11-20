@@ -90,7 +90,7 @@ export const SourcePanel: React.FC<SourcePanelProps> = ({
                     </span>
                   </div>
                   {source.pageRange && (
-                    <span className="px-1 py-0.2 rounded text-[10px] font-mono bg-theme-surface-secondary text-theme-text-secondary border border-theme-border">
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-theme-surface-secondary text-theme-text-secondary border border-theme-border">
                       {source.pageRange}
                     </span>
                   )}

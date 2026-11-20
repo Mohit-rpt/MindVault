@@ -211,16 +211,16 @@ export const DocumentLibrary: React.FC = () => {
       {/* Feedback banner */}
       {feedback && (
         <div
-          className={`p-3 rounded-xl text-xs flex items-center justify-between ${
+          className={`p-3 rounded-xl text-xs flex items-center justify-between border ${
             feedback.type === 'success'
-              ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
-              : 'bg-rose-500/10 border border-rose-500/20 text-rose-400'
+              ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-700 dark:text-emerald-300'
+              : 'bg-rose-500/10 border-rose-500/25 text-rose-700 dark:text-rose-300'
           }`}
         >
           <span>{feedback.text}</span>
           <button
             onClick={() => setFeedback(null)}
-            className="text-vault-400 hover:text-white font-bold ml-2"
+            className="text-theme-text-muted hover:text-theme-text font-bold ml-2 text-sm"
           >
             ×
           </button>
@@ -297,8 +297,8 @@ export const DocumentLibrary: React.FC = () => {
 
       {/* Documents Grid / Empty State */}
       {isLoading ? (
-        <div className="py-20 text-center text-vault-500 text-xs">
-          <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-blue-400" />
+        <div className="py-20 text-center text-theme-text-muted text-xs">
+          <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-theme-accent" />
           Loading knowledge documents...
         </div>
       ) : documents.length === 0 ? (

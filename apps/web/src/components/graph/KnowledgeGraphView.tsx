@@ -25,7 +25,11 @@ import { GraphCanvas } from './GraphCanvas';
 import { EntityDetailDrawer } from './EntityDetailDrawer';
 import { RelationEvidenceDrawer } from './RelationEvidenceDrawer';
 
-export const KnowledgeGraphView: React.FC = () => {
+export interface KnowledgeGraphViewProps {
+  onNavigateToDocuments?: () => void;
+}
+
+export const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({ onNavigateToDocuments }) => {
   const { activeWorkspace, accessToken } = useAuth();
 
   // Graph state
@@ -281,6 +285,16 @@ export const KnowledgeGraphView: React.FC = () => {
           documents, or notes in the Document Library to automatically extract entities and populate
           your graph.
         </p>
+        {onNavigateToDocuments && (
+          <button
+            type="button"
+            onClick={onNavigateToDocuments}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-theme-accent hover:bg-theme-accent-hover text-white text-xs font-medium rounded-xl shadow-subtle transition-colors"
+          >
+            <span>Open Document Library</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
     );
   }
