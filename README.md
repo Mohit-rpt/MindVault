@@ -20,7 +20,7 @@ Every synthesized answer is deterministically validated against retrieved source
 │ Relational GraphRAG   │ Recursive SQL traversal across entities, relations & evidence   │
 │ Grounding & Citations │ Fail-closed bracketed citations ([S1], [S2]) verified in chunks │
 │ Bounded Chat Memory   │ Dual-tier memory (sliding turn window + rolling summaries)       │
-│ Provider Agnostic     │ Local private Ollama (qwen3) + Cloud Google Gemini (Flash)      │
+│ Native Gemini AI      │ Cloud Google Gemini (Flash generation + 768d Matryoshka embed)   │
 │ Tenant Isolation      │ Cryptographic workspace scoping enforced at the SQL query level │
 │ Tested & Verified     │ 921 tests passing across 77 test files (100% pass rate)         │
 └───────────────────────┴─────────────────────────────────────────────────────────────────┘
@@ -79,8 +79,7 @@ flowchart TD
     end
 
     subgraph Providers ["AI Provider Adapters"]
-        OllamaLocal["Local Ollama (qwen3:0.6b / nomic-embed-text)"]
-        GeminiCloud["Cloud Google Gemini (gemini-3.5-flash)"]
+        GeminiCloud["Google Gemini (gemini-3.5-flash / gemini-embedding-2)"]
     end
 
     Web --> AuthMid
@@ -116,8 +115,7 @@ flowchart TD
 | **Background Worker**        | Node.js, TypeScript, BullMQ 6.6, ioredis 6.0                 | Reliable asynchronous ingestion, graph extraction, and reconciliation |
 | **Database & Vector Engine** | PostgreSQL 16, pgvector extension (`v0.8.7`), Prisma 6.2     | Relational schema, 768d dense vector HNSW cosine index, FTS GIN index |
 | **Cache & Task Queues**      | Redis 7 (Alpine)                                             | Session storage, rate limiting, and BullMQ task queues                |
-| **Local AI Provider**        | Ollama (`qwen3:0.6b`, `nomic-embed-text`)                    | 100% private, local generation and 768-dimensional embeddings         |
-| **Cloud AI Provider**        | Google Gemini SDK (`@google/genai`, `gemini-3.5-flash`)      | Optional high-throughput cloud streaming provider                     |
+| **Primary AI Provider**      | Google Gemini SDK (`@google/genai`)                          | `gemini-3.5-flash` generation, `gemini-embedding-2` (768d Matryoshka) |
 | **Document Extractors**      | `pdf-parse` v2, `mammoth` (DOCX), native text/markdown       | Multi-format text and structure extraction                            |
 | **Authentication & Crypto**  | Argon2id (`argon2` v0.41), HMAC-SHA256 JWT, HttpOnly Cookies | Zero-trust session management and token rotation                      |
 | **Monorepo & Tooling**       | pnpm Workspaces, Vitest, ESLint, Prettier, Docker Compose    | Code quality, typecheck, linting, and containerization                |
@@ -244,7 +242,7 @@ MindVault — Preflight Environment & Service Verification
   [ PASS ] Redis Cache & Queue (responded to PING)
 
 [2. AI PROVIDER READINESS]
-  [ PASS ] Ollama Service (or Gemini Provider online)
+  [ PASS ] Gemini Provider (API key valid and endpoint reachable)
 
 [3. DEMO SEED DATA]
   [ PASS ] Showcase Workspace Seed (ws_demo_showcase_001 initialized)
@@ -285,44 +283,25 @@ Sign in with the isolated showcase account:
 
 ## 7. AI Provider Configuration
 
-MindVault supports interchangeable local and cloud LLM providers:
+MindVault is powered by **Google Gemini** for generation, embeddings, and Knowledge Graph extraction:
 
-### Local Ollama (Default Local Mode)
+### Google Gemini (Production & Development Default)
 
-Provides 100% private, local inference without external API keys.
+Provides low-latency, high-throughput streaming responses and 768-dimensional Matryoshka embeddings using Google's `@google/genai` SDK.
 
-1. Install and start [Ollama](https://ollama.ai).
-2. Pull the required models:
-   ```bash
-   # Primary RAG generation model
-   ollama pull qwen3:0.6b
-
-   # Dense embedding model (768 dimensions)
-   ollama pull nomic-embed-text
-   ```
-3. Set in `.env`:
-   ```ini
-   LLM_PROVIDER=ollama
-   OLLAMA_BASE_URL=http://localhost:11434
-   OLLAMA_GENERATION_MODEL=qwen3:0.6b
-   EMBEDDING_MODEL=nomic-embed-text
-   ```
-
-### Google Gemini (Cloud Streaming Mode)
-
-Provides low-latency, high-throughput responses using Google's `@google/genai` SDK.
-
-1. Obtain a Gemini API key from Google AI Studio.
+1. Obtain a Gemini API key from [Google AI Studio](https://aistudio.google.com/).
 2. Set in `.env`:
    ```ini
    LLM_PROVIDER=gemini
+   EMBEDDING_PROVIDER=gemini
    GEMINI_API_KEY=your_gemini_api_key_here
    GEMINI_MODEL=gemini-3.5-flash
+   GEMINI_EMBEDDING_MODEL=gemini-embedding-2
    ```
 
-### Offline Demonstration Mode (Zero External AI)
+### Offline Demonstration & Mock Mode (Zero External AI)
 
-If neither Ollama nor Gemini is running, MindVault remains **100% demonstrable in offline mode**. The pre-seeded showcase workspace contains pre-computed unit vectors, complete multi-turn conversation history with bracketed citations, and full knowledge graph topology. Presenters can explore the Document Library, Deep Search, Citation Panels, and Knowledge Graph without an active LLM.
+When running offline or in unit test environments (`NODE_ENV=test` or `LLM_PROVIDER=mock`), MindVault utilizes deterministic mock providers. The pre-seeded showcase workspace contains pre-computed unit vectors, complete multi-turn conversation history with bracketed citations, and full knowledge graph topology. Presenters can explore the Document Library, Deep Search, Citation Panels, and Knowledge Graph without an active external API connection.
 
 ---
 
@@ -561,7 +540,7 @@ To preserve presentation integrity, understand what is implemented versus what i
 
 - **Local Showcase Scope:** The seeded demo account (`demo@mindvault.local`) and password (`DemoPassword123!`) are exclusively for local demonstrations. Seeded embeddings (`mock-embed-768`) are deterministic unit vectors generated via SHA-256 for offline reproducibility; they are not trained semantic models.
 - **Bundle Chunk Size:** Vite emits a non-blocking chunk warning during production build (`dist/assets/index-*.js` is ~678 kB). This is harmless for local use and can be optimized with dynamic `import()` in future polish passes.
-- **Live Graph Extraction:** Live extraction of newly uploaded files requires an active Ollama instance (`qwen3:0.6b`) or Gemini API key. The showcase workspace ships with pre-extracted graph topology so live extraction is not required for demonstrations.
+- **Live Graph Extraction:** Live extraction of newly uploaded files requires a configured Gemini API key (`gemini-3.5-flash`). The showcase workspace ships with pre-extracted graph topology so live extraction is not required for demonstrations.
 
 ---
 

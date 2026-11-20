@@ -206,25 +206,17 @@ Original uploaded files are stored safely outside web roots in:
 `infrastructure/storage/documents/` (or the path defined by `STORAGE_DIR`).
 Storage keys use sanitized, collision-free names: `doc_<timestamp>_<randomHex>.<ext>`.
 
-### Local Vector Embeddings (Ollama):
+### Vector Embeddings (Google Gemini):
 
-MindVault standardizes on **768 dimensions** using `nomic-embed-text` (v1.5) with an 8192 token context window. This matches Google Gemini `text-embedding-004` (768 dimensions), allowing zero-migration multi-provider compatibility.
+MindVault standardizes on **768 dimensions** using Google Gemini `gemini-embedding-2` (`text-embedding-004`) via Matryoshka dimensionality reduction and L2 unit-norm normalization.
 
-1. **Install Ollama:** [https://ollama.com](https://ollama.com)
-2. **Pull the Embedding Model:**
-   ```bash
-   ollama pull nomic-embed-text
-   ```
-3. **Verify Ollama is Running:**
-   ```bash
-   curl http://127.0.0.1:11434/api/tags
-   ```
-4. **Environment Variables (`.env`):**
+1. **Obtain API Key:** [https://aistudio.google.com](https://aistudio.google.com)
+2. **Environment Variables (`.env`):**
    ```env
-   OLLAMA_BASE_URL="http://127.0.0.1:11434"
-   EMBEDDING_PROVIDER="ollama"
-   EMBEDDING_MODEL="nomic-embed-text"
-   EMBEDDING_DIMENSION="768"
+   EMBEDDING_PROVIDER="gemini"
+   EMBEDDING_MODEL="gemini-embedding-2"
+   GEMINI_API_KEY="your_api_key_here"
+   GEMINI_EMBEDDING_MODEL="gemini-embedding-2"
    STORAGE_DIR="./infrastructure/storage/documents"
    ```
 

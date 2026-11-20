@@ -1,6 +1,6 @@
 # MindVault — Local Windows Worker Operational & Setup Guide
 
-**Architecture:** Cloud API + Cloud PostgreSQL (pgvector) + Cloud Upstash Redis (TLS) + Local Windows Worker & Ollama  
+**Architecture:** Cloud API + Cloud PostgreSQL (pgvector) + Cloud Upstash Redis (TLS) + Windows Background Worker + Google Gemini Cloud AI  
 **Target Host Platform:** Windows 11 (Intel Core i3-1115G4, 8 GB RAM)  
 **Worker Concurrency:** `WORKER_CONCURRENCY=1` (Strictly enforced)  
 **Status:** **LOCALLY OPERATIONAL & END-TO-END VERIFIED**
@@ -9,7 +9,7 @@
 
 ## 1. System Overview & Architecture
 
-MindVault uses a hybrid cloud-to-local distributed architecture designed for low-cost, high-privacy personal knowledge processing:
+MindVault uses an asynchronous distributed architecture designed for low-cost, high-privacy personal knowledge processing with cloud-native AI:
 
 ```
 +-------------------------------------------------------------------------------+
@@ -38,12 +38,12 @@ MindVault uses a hybrid cloud-to-local distributed architecture designed for low
 |  | - Knowledge Graph Worker (Entity extraction, relation resolution)      |  |
 |  | - Single-instance file lock & cooperative 8-second chunk budget        |  |
 |  +-------------------------+-----------------------------------------------+  |
-|                            | Local HTTP (:11434)                              |
+|                            | HTTPS (Google Gen AI SDK)                        |
 |                            v                                                  |
 |  +-------------------------------------------------------------------------+  |
-|  | Local Ollama Service                                                    |  |
-|  | - Embedding:  nomic-embed-text (768 dimensions)                         |  |
-|  | - Generation: qwen3:0.6b (or qwen3:1.7b)                                |  |
+|  | Google Gemini Cloud AI Service                                          |  |
+|  | - Embedding:  gemini-embedding-2 (768 dimensions Matryoshka)           |  |
+|  | - Extraction: gemini-3.5-flash (Strict JSON Schema extraction)          |  |
 |  +-------------------------------------------------------------------------+  |
 +-------------------------------------------------------------------------------+
 ```
@@ -52,21 +52,13 @@ MindVault uses a hybrid cloud-to-local distributed architecture designed for low
 
 ## 2. Prerequisites & Hardware Requirements
 
-| Requirement          | Specification                     | Verification Command                                |
-| :------------------- | :-------------------------------- | :-------------------------------------------------- |
-| **Operating System** | Windows 11 (x64)                  | `[System.Environment]::OSVersion.VersionString`     |
-| **Node.js**          | v24.22.3 (or >= 20.0.0)           | `node --version`                                    |
-| **Package Manager**  | pnpm v12.16.1 (or >= 9.0.0)       | `pnpm --version`                                    |
-| **Local Inference**  | Ollama for Windows                | `Invoke-RestMethod http://127.0.0.1:11434/api/tags` |
-| **Required Models**  | `nomic-embed-text`, `qwen3:0.6b`  | `ollama list`                                       |
-| **Hardware**         | Intel Core i3 / Ryzen 3, 8 GB RAM | Tested on i3-1115G4 (4 cores @ 3.00 GHz)            |
-
-### Installing Required Models
-
-```powershell
-ollama pull nomic-embed-text
-ollama pull qwen3:0.6b
-```
+| Requirement          | Specification                     | Verification Command                            |
+| :------------------- | :-------------------------------- | :---------------------------------------------- |
+| **Operating System** | Windows 11 (x64)                  | `[System.Environment]::OSVersion.VersionString` |
+| **Node.js**          | v24.22.3 (or >= 20.0.0)           | `node --version`                                |
+| **Package Manager**  | pnpm v12.16.1 (or >= 9.0.0)       | `pnpm --version`                                |
+| **Cloud AI**         | Google Gemini Developer API Key   | Obtained from [Google AI Studio](https://aistudio.google.com/) |
+| **Hardware**         | Intel Core i3 / Ryzen 3, 8 GB RAM | Tested on i3-1115G4 (4 cores @ 3.00 GHz)        |
 
 ---
 
@@ -79,23 +71,35 @@ ollama pull qwen3:0.6b
 DATABASE_URL="postgresql://mindvault:[PASSWORD]@localhost:5433/mindvault?schema=public"
 
 # =============================================================================
-# Upstash Redis Queue (Must start with rediss:// for production TLS)
+# Redis Queue Configuration
 # =============================================================================
-REDIS_URL="rediss://default:[TOKEN]@your-db-id.upstash.io:6379"
+# Local Development (Default): Point to local Docker Redis instance
+REDIS_URL="redis://localhost:6379"
+
+# Remote Redis Guard (§P0):
+# If connecting a development worker to remote Upstash Redis, you MUST explicitly
+# set DEV_ALLOW_REMOTE_REDIS=true. Otherwise, startup fails closed to prevent
+# accidental consumption of production user workloads from your local workstation.
+# DEV_ALLOW_REMOTE_REDIS=true
 
 # =============================================================================
 # Worker Runtime & Hardware Profile (8 GB RAM Constraint)
 # =============================================================================
 WORKER_CONCURRENCY=1
-WORKER_TYPE=all
+# For local companion / dev work, use WORKER_TYPE=local to isolate from cloud queues.
+# Production cloud workers run with WORKER_TYPE=cloud via Dockerfile.worker.
+WORKER_TYPE=local
 WORKER_SHUTDOWN_TIMEOUT_MS=60000
 
 # =============================================================================
-# Local AI Inference (Ollama)
+# Google Gemini Cloud AI
 # =============================================================================
-OLLAMA_BASE_URL="http://localhost:11434"
-EMBEDDING_MODEL="nomic-embed-text"
-OLLAMA_GENERATION_MODEL="qwen3:0.6b"
+LLM_PROVIDER="gemini"
+EMBEDDING_PROVIDER="gemini"
+GEMINI_API_KEY="your_gemini_api_key_here"
+GEMINI_MODEL="gemini-3.5-flash"
+GEMINI_EMBEDDING_MODEL="gemini-embedding-2"
+EMBEDDING_MODEL="gemini-embedding-2"
 LLM_REQUEST_TIMEOUT=60000
 LLM_MAX_OUTPUT_TOKENS=1024
 LLM_TEMPERATURE=0.2
@@ -105,6 +109,9 @@ LLM_TEMPERATURE=0.2
 # =============================================================================
 STORAGE_DIR="./infrastructure/storage/documents"
 ```
+
+> [!IMPORTANT]
+> **Production Cloud Deployments:** For instructions on deploying the containerized cloud worker service to Render, Railway, or VPS, see [`docs/CLOUD_WORKER_DEPLOYMENT_GUIDE.md`](./CLOUD_WORKER_DEPLOYMENT_GUIDE.md).
 
 ---
 
@@ -127,9 +134,8 @@ _Expected Output:_
 [ PASS ] Redis connection established
 [ PASS ] PostgreSQL connected successfully
 [ PASS ] pgvector extension active (version: 0.8.7)
-[ PASS ] Ollama online at http://localhost:11434
-[ PASS ] Embedding model 'nomic-embed-text' installed
-[ PASS ] Generation model 'qwen3:0.6b' installed
+[ PASS ] Gemini API Key configured: AIza...7890 (length 39)
+[ PASS ] Target models: generation='gemini-3.5-flash', embedding='gemini-embedding-2' (768-D)
 [ PASS ] Storage directory accessible
 RESULT: LOCAL WORKER PREFLIGHT PASSED
 ```
