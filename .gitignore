@@ -41,9 +41,12 @@ apps/api/infrastructure/storage/
 .DS_Store
 Thumbs.db
 
-# Test coverage
+# Test coverage & E2E artifacts
 coverage/
 .nyc_output/
+playwright-report/
+test-results/
+blob-report/
 
 # Temporary files
 tmp/
