@@ -1,0 +1,73 @@
+# ==============================================================================
+# MindVault Background Worker — Multi-Stage Production Containerfile
+#
+# Production Security & Architecture Features:
+# - Multi-stage build for minimal production footprint
+# - Unprivileged execution under standard 'node' non-root user (UID 1000)
+# - Native signal forwarding and zombie process reaping via dumb-init (PID 1)
+# - Graceful shutdown for in-flight BullMQ jobs upon receiving SIGTERM/SIGINT
+# - Isolated cloud queue consumer (WORKER_TYPE=cloud) preventing local queue leakage
+# ==============================================================================
+
+# Stage 1: Base Alpine image with OpenSSL (Prisma dependency) & dumb-init
+FROM node:22-alpine AS base
+RUN apk add --no-cache openssl libc6-compat dumb-init
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN corepack enable && corepack prepare pnpm@12.16.1 --activate
+
+# Stage 2: Dependencies and compilation
+FROM base AS builder
+WORKDIR /app
+
+# Copy monorepo manifests for deterministic frozen lockfile resolution
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/config/package.json ./packages/config/
+COPY packages/shared/package.json ./packages/shared/
+COPY apps/api/package.json ./apps/api/
+COPY apps/worker/package.json ./apps/worker/
+COPY apps/web/package.json ./apps/web/
+COPY apps/companion/package.json ./apps/companion/
+COPY prisma/schema.prisma ./prisma/
+
+# Install workspace dependencies
+RUN pnpm install --frozen-lockfile
+
+# Copy required workspace sources
+COPY packages/config/ ./packages/config/
+COPY packages/shared/ ./packages/shared/
+COPY apps/worker/ ./apps/worker/
+
+# Generate Prisma Client & compile worker binaries
+RUN npx prisma generate --schema=prisma/schema.prisma
+RUN pnpm --filter @mindvault/shared build
+RUN pnpm --filter @mindvault/worker build
+
+# Stage 3: Production runner
+FROM base AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV WORKER_TYPE=cloud
+ENV WORKER_CONCURRENCY=1
+
+# Ensure app directory permissions
+RUN chown -R node:node /app
+
+# Copy necessary workspace build artifacts and dependencies
+COPY --chown=node:node --from=builder /app/package.json ./
+COPY --chown=node:node --from=builder /app/pnpm-workspace.yaml ./
+COPY --chown=node:node --from=builder /app/node_modules ./node_modules
+COPY --chown=node:node --from=builder /app/packages/config ./packages/config
+COPY --chown=node:node --from=builder /app/packages/shared ./packages/shared
+COPY --chown=node:node --from=builder /app/apps/worker/package.json ./apps/worker/package.json
+COPY --chown=node:node --from=builder /app/apps/worker/dist ./apps/worker/dist
+COPY --chown=node:node --from=builder /app/apps/worker/node_modules ./apps/worker/node_modules
+COPY --chown=node:node --from=builder /app/prisma ./prisma
+
+# Switch to non-root user
+USER node
+
+# Signal-aware entrypoint forwarding SIGTERM/SIGINT to Node.js runtime
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["node", "apps/worker/dist/index.js"]
