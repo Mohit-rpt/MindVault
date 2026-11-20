@@ -16,6 +16,9 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md}\"",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
     "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:report": "playwright show-report",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "db:generate": "prisma generate --schema=prisma/schema.prisma",
@@ -43,6 +46,7 @@
   "devDependencies": {
     "@eslint/js": "^9.17.0",
     "@mindvault/shared": "workspace:*",
+    "@playwright/test": "^1.65.1",
     "@types/node": "^22.10.2",
     "bullmq": "^6.7.2",
     "eslint": "^9.17.0",

@@ -1,0 +1,75 @@
+name: MindVault CI / Staging Validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Lint, Typecheck, Test & Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      NODE_ENV: test
+      LLM_PROVIDER: mock
+      EMBEDDING_PROVIDER: mock
+      JWT_ACCESS_SECRET: test_jwt_access_secret_deterministic_32_chars
+      COOKIE_SECRET: test_cookie_signing_secret_deterministic_32_chars
+      STORAGE_PROVIDER: local
+      STORAGE_DIR: ./storage-test
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 12.16.1
+
+      - name: Setup Node.js 22 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install monorepo dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma Client
+        run: pnpm db:generate
+
+      - name: Lint and formatting validation
+        run: |
+          pnpm lint
+          pnpm format:check
+
+      - name: Monorepo static typecheck
+        run: pnpm typecheck
+
+      - name: Run unit and integration tests (Vitest)
+        run: pnpm test
+
+      - name: Build all monorepo packages and applications
+        run: pnpm build
+
+      - name: Install Playwright Chromium browser binary
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright End-to-End browser test suite
+        run: pnpm test:e2e
+
+      - name: Upload Playwright Test Report Artifacts on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14
