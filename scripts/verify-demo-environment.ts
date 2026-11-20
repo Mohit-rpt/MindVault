@@ -5,9 +5,8 @@
  * 1. PostgreSQL connectivity, version, and query latency.
  * 2. pgvector extension presence and 768-dimensional vector casting capability.
  * 3. Redis socket connectivity, PING latency, and queue readiness.
- * 4. Ollama endpoint availability and installed generation/embedding models.
- * 5. Gemini API configuration and read-only credential validation.
- * 6. Demo showcase workspace seed verification (documents, vectors, graph entities).
+ * 4. Google Gemini API configuration and read-only credential validation.
+ * 5. Demo showcase workspace seed verification (documents, vectors, graph entities).
  *
  * Operational Safeguards:
  * - Read-only: Never alters database records, Redis queues, or file assets.
@@ -331,107 +330,7 @@ export async function checkRedis(redisUrl?: string): Promise<PreflightCheckResul
 }
 
 // ---------------------------------------------------------------------------
-// Check 4: Ollama Local LLM & Embedding Service
-// ---------------------------------------------------------------------------
-export async function checkOllama(options?: {
-  baseUrl?: string;
-  generationModel?: string;
-  embeddingModel?: string;
-  activeProvider?: string;
-}): Promise<PreflightCheckResult> {
-  const baseUrl = options?.baseUrl || process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
-  const genModel = options?.generationModel || process.env.OLLAMA_GENERATION_MODEL || 'qwen3:0.6b';
-  const embedModel = options?.embeddingModel || process.env.EMBEDDING_MODEL || 'nomic-embed-text';
-  const activeProvider = options?.activeProvider || process.env.LLM_PROVIDER || 'ollama';
-
-  const isOllamaActive = activeProvider === 'ollama';
-
-  try {
-    const res = await fetch(`${baseUrl}/api/tags`, {
-      method: 'GET',
-      signal: AbortSignal.timeout(3000),
-    });
-
-    if (!res.ok) {
-      const statusText = `HTTP ${res.status} ${res.statusText}`;
-      if (isOllamaActive) {
-        return {
-          category: 'AI_PROVIDER',
-          name: 'Ollama Service',
-          status: 'FAIL',
-          summary: `Ollama service returned unexpected status: ${statusText}`,
-          remediation: `Verify Ollama daemon health at ${baseUrl}.`,
-        };
-      }
-      return {
-        category: 'AI_PROVIDER',
-        name: 'Ollama Service',
-        status: 'WARN',
-        summary: `Ollama returned ${statusText} (Optional: LLM_PROVIDER is '${activeProvider}')`,
-      };
-    }
-
-    const data: any = await res.json();
-    const installedModels: string[] = (data.models || []).map((m: any) => m.name);
-
-    const hasGenModel = installedModels.some(
-      (m) => m === genModel || m === `${genModel}:latest` || m.startsWith(`${genModel}:`),
-    );
-    const hasEmbedModel = installedModels.some(
-      (m) => m === embedModel || m === `${embedModel}:latest` || m.startsWith(`${embedModel}:`),
-    );
-
-    if (hasGenModel && hasEmbedModel) {
-      return {
-        category: 'AI_PROVIDER',
-        name: 'Ollama Service',
-        status: 'PASS',
-        summary: `Online at ${baseUrl} with models '${genModel}' and '${embedModel}' installed`,
-      };
-    }
-
-    const missingModels: string[] = [];
-    if (!hasGenModel) missingModels.push(`generation model '${genModel}'`);
-    if (!hasEmbedModel) missingModels.push(`embedding model '${embedModel}'`);
-
-    const summary = `Online at ${baseUrl}, but missing ${missingModels.join(' and ')}`;
-    const remediation = missingModels
-      .map((m) => {
-        const modelName = m.includes('generation') ? genModel : embedModel;
-        return `Run 'ollama pull ${modelName}'`;
-      })
-      .join('; ');
-
-    return {
-      category: 'AI_PROVIDER',
-      name: 'Ollama Service',
-      status: isOllamaActive ? 'WARN' : 'WARN',
-      summary,
-      remediation: `${remediation}. (Pre-seeded demo workspace functions offline without live Ollama).`,
-    };
-  } catch (err: any) {
-    if (isOllamaActive) {
-      return {
-        category: 'AI_PROVIDER',
-        name: 'Ollama Service',
-        status: 'WARN',
-        summary: `Unreachable at ${baseUrl} (${err.message || 'Connection refused'})`,
-        remediation:
-          "Start the Ollama daemon via 'ollama serve'. Note: Pre-seeded demo conversations and documents work offline, but live generation requires Ollama.",
-      };
-    }
-
-    return {
-      category: 'AI_PROVIDER',
-      name: 'Ollama Service',
-      status: 'SKIP',
-      summary: `Unreachable at ${baseUrl} (Optional: LLM_PROVIDER is configured to '${activeProvider}')`,
-    };
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Check 5: Google Gemini Integration
+// Check 4: Google Gemini Integration
 // ---------------------------------------------------------------------------
 export async function checkGemini(options?: {
   apiKey?: string;
@@ -440,7 +339,7 @@ export async function checkGemini(options?: {
 }): Promise<PreflightCheckResult> {
   const apiKey = options?.apiKey ?? process.env.GEMINI_API_KEY;
   const model = options?.model || process.env.GEMINI_MODEL || 'gemini-3.5-flash';
-  const activeProvider = options?.activeProvider || process.env.LLM_PROVIDER || 'ollama';
+  const activeProvider = options?.activeProvider || process.env.LLM_PROVIDER || 'gemini';
 
   const isGeminiActive = activeProvider === 'gemini';
 
@@ -452,7 +351,7 @@ export async function checkGemini(options?: {
         status: 'FAIL',
         summary: "GEMINI_API_KEY is not configured, but LLM_PROVIDER is set to 'gemini'",
         remediation:
-          "Add GEMINI_API_KEY to your .env file or set LLM_PROVIDER='ollama' (or 'mock').",
+          "Add GEMINI_API_KEY to your .env file or set LLM_PROVIDER='mock' for offline testing.",
       };
     }
 
@@ -686,7 +585,6 @@ export async function runPreflightChecks(): Promise<number> {
 
   const { pgCheck, vectorCheck } = await checkPostgresAndVector(dbUrl);
   const redisCheck = await checkRedis(redisUrl);
-  const ollamaCheck = await checkOllama();
   const geminiCheck = await checkGemini();
   const demoDataCheck = await checkDemoWorkspace(dbUrl);
 
@@ -694,7 +592,6 @@ export async function runPreflightChecks(): Promise<number> {
     pgCheck,
     vectorCheck,
     redisCheck,
-    ollamaCheck,
     geminiCheck,
     demoDataCheck,
   ];

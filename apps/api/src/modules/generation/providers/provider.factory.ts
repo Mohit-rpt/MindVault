@@ -3,7 +3,6 @@
  */
 
 import type { LLMProvider } from '@mindvault/shared';
-import { OllamaProvider } from './ollama.provider.js';
 import { MockLLMProvider } from './mock.provider.js';
 import { GeminiProvider } from './gemini.provider.js';
 
@@ -19,7 +18,7 @@ export class LLMProviderFactory {
 
     const providerType =
       requestedProvider ||
-      (process.env.NODE_ENV === 'test' ? 'mock' : process.env.LLM_PROVIDER || 'ollama');
+      (process.env.NODE_ENV === 'test' ? 'mock' : process.env.LLM_PROVIDER || 'gemini');
 
     if (this.instances.has(providerType)) {
       return this.instances.get(providerType)!;
@@ -31,7 +30,9 @@ export class LLMProviderFactory {
     } else if (providerType === 'gemini') {
       instance = new GeminiProvider();
     } else {
-      instance = new OllamaProvider();
+      throw new Error(
+        `Unsupported LLM provider: "${providerType}". MindVault strictly uses "gemini" (or "mock" in test environments).`,
+      );
     }
 
     this.instances.set(providerType, instance);

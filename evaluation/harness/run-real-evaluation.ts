@@ -45,7 +45,7 @@ async function main() {
   console.log('========================================================================');
   console.log(`Execution Timestamp: ${new Date().toISOString()}`);
   console.log(`Database Target:     ${EVAL_CONFIG.databaseUrl}`);
-  console.log(`Ollama Endpoint:     ${EVAL_CONFIG.ollamaBaseUrl}`);
+  console.log(`AI Provider:         Google Gemini AI`);
   console.log(`Embedding Model:     ${EVAL_CONFIG.embeddingModel}`);
   console.log(`Generation Model:    ${EVAL_CONFIG.generationModel}`);
   console.log('========================================================================\n');
@@ -142,7 +142,7 @@ async function main() {
     },
     models: {
       embedding: {
-        provider: 'ollama',
+        provider: EVAL_CONFIG.embeddingProvider,
         model: EVAL_CONFIG.embeddingModel,
         digest: embeddingDigest,
         dimension: EVAL_CONFIG.embeddingDimension,
@@ -150,7 +150,7 @@ async function main() {
       generation: {
         provider: EVAL_CONFIG.generationProvider,
         model: EVAL_CONFIG.generationModel,
-        sdk: EVAL_CONFIG.generationProvider === 'gemini' ? '@google/genai@2.32.0' : 'ollama-fetch',
+        sdk: '@google/genai@2.32.0',
         digest: generationDigest,
         temperature: EVAL_CONFIG.generationTemperature,
         maxTokens: EVAL_CONFIG.generationMaxTokens,

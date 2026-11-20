@@ -426,7 +426,9 @@ describe('RetrievalService Orchestration & GraphRAG Integration', () => {
     expect(dbService.searchVectorChunks).toHaveBeenCalledWith(
       wsId,
       dummyVector,
-      expect.any(Object),
+      expect.objectContaining({
+        embeddingModel: expect.any(String),
+      }),
     );
     expect(GraphRetrievalService.retrieveChunks).toHaveBeenCalledWith(
       wsId,
@@ -455,5 +457,74 @@ describe('RetrievalService Orchestration & GraphRAG Integration', () => {
     expect(res.metadata.totalResults).toBe(0);
     expect(res.metadata.graphError).toBeUndefined();
     expect(res.metadata.graphSearchUsed).toBe(true);
+  });
+
+  // Phase 1B.4.2: Model propagation & fail-soft tests
+  it('19. passes authoritative embedding model to dbService.searchVectorChunks in hybrid and semantic modes', async () => {
+    await RetrievalService.executeSearch(wsId, {
+      query: 'PostgreSQL WAL recovery',
+      mode: 'hybrid',
+    });
+
+    const activeModel = EmbeddingService.getModelName();
+    expect(dbService.searchVectorChunks).toHaveBeenCalledWith(
+      wsId,
+      dummyVector,
+      expect.objectContaining({
+        embeddingModel: activeModel,
+      }),
+    );
+  });
+
+  it('20. degrades gracefully to keyword search in hybrid mode when query vector generation fails (e.g. provider timeout)', async () => {
+    vi.spyOn(EmbeddingService, 'generateQueryVector').mockRejectedValueOnce(
+      new Error('Embedding provider timed out after 30000ms'),
+    );
+
+    const res = await RetrievalService.executeSearch(wsId, {
+      query: 'PostgreSQL crash recovery',
+      mode: 'hybrid',
+    });
+
+    // Should NOT throw 500 error; degrades to keyword results
+    expect(res.results.length).toBeGreaterThan(0);
+    expect(res.metadata.semanticSearchUsed).toBe(false);
+    expect(res.metadata.keywordSearchUsed).toBe(true);
+    // Vector search should not be called when vector generation failed
+    expect(dbService.searchVectorChunks).not.toHaveBeenCalled();
+    // Keyword search executed successfully
+    expect(dbService.searchKeywordChunks).toHaveBeenCalledTimes(1);
+    // Results should have keyword source
+    expect(res.results[0].retrievalSources).toContain('keyword');
+  });
+
+  it('21. degrades gracefully to keyword search in hybrid mode when dbService.searchVectorChunks fails', async () => {
+    vi.spyOn(dbService, 'searchVectorChunks').mockRejectedValueOnce(
+      new Error('Vector index connection lost'),
+    );
+
+    const res = await RetrievalService.executeSearch(wsId, {
+      query: 'PostgreSQL crash recovery',
+      mode: 'hybrid',
+    });
+
+    // Should NOT throw; degrades to keyword results
+    expect(res.results.length).toBeGreaterThan(0);
+    expect(res.metadata.semanticSearchUsed).toBe(false);
+    expect(res.metadata.keywordSearchUsed).toBe(true);
+    expect(dbService.searchKeywordChunks).toHaveBeenCalledTimes(1);
+  });
+
+  it('22. fails hard in semantic-only mode when query vector generation fails', async () => {
+    vi.spyOn(EmbeddingService, 'generateQueryVector').mockRejectedValueOnce(
+      new Error('Embedding model unavailable'),
+    );
+
+    await expect(
+      RetrievalService.executeSearch(wsId, {
+        query: 'PostgreSQL crash recovery',
+        mode: 'semantic',
+      }),
+    ).rejects.toThrow('Embedding model unavailable');
   });
 });

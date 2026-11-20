@@ -22,7 +22,6 @@ import {
 } from '../../retrieval/embeddings/embedding.service.js';
 import { LLMProviderFactory } from '../providers/provider.factory.js';
 import { MockLLMProvider } from '../providers/mock.provider.js';
-import { OllamaProvider } from '../providers/ollama.provider.js';
 import { GeminiProvider } from '../providers/gemini.provider.js';
 import { RAGService } from '../services/rag.service.js';
 import { RetrievalService } from '../../retrieval/services/retrieval.service.js';
@@ -269,25 +268,6 @@ describe('Milestone 2.2 — SSE Lifecycle & Stream Cancellation Hardening', () =
       // Should have exited in ~50-100ms rather than waiting full 500ms * token count
       expect(elapsed).toBeLessThan(350);
       expect(controller.signal.aborted).toBe(true);
-    });
-
-    it('OllamaProvider should link options.signal to fetch AbortController', async () => {
-      const ollama = new OllamaProvider({ baseUrl: 'http://127.0.0.1:11434', modelName: 'llama3' });
-      const controller = new AbortController();
-      controller.abort(); // pre-aborted
-
-      // Pre-aborted signal should throw CLIENT_ABORTED in generate()
-      await expect(ollama.generate('Test prompt', { signal: controller.signal })).rejects.toThrow(
-        'CLIENT_ABORTED',
-      );
-
-      // Pre-aborted signal should cleanly exit generator in generateStream()
-      const stream = ollama.generateStream('Test prompt', { signal: controller.signal });
-      const chunks: any[] = [];
-      for await (const chunk of stream) {
-        chunks.push(chunk);
-      }
-      expect(chunks).toHaveLength(0);
     });
 
     it('GeminiProvider should cleanly exit generator when signal is aborted', async () => {

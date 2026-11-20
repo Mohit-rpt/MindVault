@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { MockLLMProvider } from './mock.provider.js';
-import { OllamaProvider } from './ollama.provider.js';
+import { GeminiProvider } from './gemini.provider.js';
 import { LLMProviderFactory } from './provider.factory.js';
 
 describe('LLM Provider Subsystem', () => {
@@ -73,81 +73,63 @@ describe('LLM Provider Subsystem', () => {
     });
   });
 
-  describe('OllamaProvider', () => {
-    it('should initialize with configured base URL and model', async () => {
-      const provider = new OllamaProvider({
-        baseUrl: 'http://127.0.0.1:11434',
-        modelName: 'qwen3:0.6b',
-      });
-
-      expect(provider.providerName).toBe('ollama');
-      expect(provider.modelName).toBe('qwen3:0.6b');
-      const info = await provider.getModelInfo();
-      expect(info.model).toBe('qwen3:0.6b');
+  describe('GeminiProvider Integration & Defaults', () => {
+    it('should instantiate GeminiProvider when explicitly requested', () => {
+      process.env.GEMINI_API_KEY = 'AIzaSyD-mock-test-key-12345';
+      const provider = LLMProviderFactory.getProvider('gemini');
+      expect(provider).toBeInstanceOf(GeminiProvider);
+      expect(provider.providerName).toBe('gemini');
     });
 
-    it('should parse non-streaming Ollama responses correctly', async () => {
-      const mockFetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          response: 'Supervised learning inference [S1].',
-          prompt_eval_count: 50,
-          eval_count: 20,
-          done_reason: 'stop',
-        }),
-      });
-      global.fetch = mockFetch;
-
-      const provider = new OllamaProvider({ baseUrl: 'http://localhost:11434' });
-      const res = await provider.generate('test prompt');
-
-      expect(res.text).toBe('Supervised learning inference [S1].');
-      expect(res.promptTokens).toBe(50);
-      expect(res.outputTokens).toBe(20);
-      expect(res.finishReason).toBe('stop');
+    it('should reject Ollama provider requests with descriptive error', () => {
+      expect(() => LLMProviderFactory.getProvider('ollama')).toThrow(
+        /Unsupported LLM provider: "ollama"/,
+      );
     });
 
-    it('should stream NDJSON chunks and parse buffer across line breaks', async () => {
-      const ndjson = [
-        JSON.stringify({ response: 'Supervised', done: false }) + '\n',
-        JSON.stringify({ response: ' learning', done: false }) + '\n',
-        JSON.stringify({ response: ' [S1]', done: true, done_reason: 'stop' }) + '\n',
-      ];
-
-      let chunkIdx = 0;
-      const mockStream = {
-        getReader: () => ({
-          read: async () => {
-            if (chunkIdx < ndjson.length) {
-              const val = new TextEncoder().encode(ndjson[chunkIdx++]);
-              return { done: false, value: val };
-            }
-            return { done: true, value: undefined };
-          },
-          releaseLock: vi.fn(),
-        }),
-      };
-
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        body: mockStream,
-      });
-
-      const provider = new OllamaProvider();
-      const chunks: string[] = [];
-
-      for await (const c of provider.generateStream('prompt')) {
-        chunks.push(c.text);
-      }
-
-      expect(chunks.join('')).toBe('Supervised learning [S1]');
+    it('should reject arbitrary unsupported providers', () => {
+      expect(() => LLMProviderFactory.getProvider('openai')).toThrow(
+        /Unsupported LLM provider: "openai"/,
+      );
     });
   });
 
   describe('LLMProviderFactory', () => {
+    const originalEnv = { ...process.env };
+
+    beforeEach(() => {
+      process.env = { ...originalEnv };
+      LLMProviderFactory.resetProvider();
+    });
+
+    afterEach(() => {
+      process.env = { ...originalEnv };
+      LLMProviderFactory.resetProvider();
+    });
+
     it('should default to MockLLMProvider in test environment', () => {
       const provider = LLMProviderFactory.getProvider();
       expect(provider.providerName).toBe('mock');
+    });
+
+    it('should default to GeminiProvider in production/development environment when LLM_PROVIDER is unset', () => {
+      process.env.NODE_ENV = 'development';
+      delete process.env.LLM_PROVIDER;
+      process.env.GEMINI_API_KEY = 'AIzaSyD-mock-test-key-12345';
+
+      const provider = LLMProviderFactory.getProvider();
+      expect(provider).toBeInstanceOf(GeminiProvider);
+      expect(provider.providerName).toBe('gemini');
+    });
+
+    it('should never silently fallback to Ollama', () => {
+      process.env.NODE_ENV = 'development';
+      delete process.env.LLM_PROVIDER;
+      process.env.GEMINI_API_KEY = 'AIzaSyD-mock-test-key-12345';
+
+      const provider = LLMProviderFactory.getProvider();
+      expect(provider.providerName).not.toBe('ollama');
+      expect(provider.providerName).toBe('gemini');
     });
 
     it('should allow setting and resetting custom providers', () => {

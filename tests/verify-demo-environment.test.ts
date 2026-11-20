@@ -7,7 +7,6 @@ import {
   redactSecret,
   checkPostgresAndVector,
   checkRedis,
-  checkOllama,
   checkGemini,
   renderPreflightReport,
   type PreflightCheckResult,
@@ -58,31 +57,11 @@ describe('Preflight Verification CLI Suite', () => {
     });
   });
 
-  describe('Ollama Diagnostic Checks', () => {
-    it('should return SKIP when Ollama is unreachable and LLM_PROVIDER is not ollama', async () => {
-      const check = await checkOllama({
-        baseUrl: 'http://localhost:59999',
-        activeProvider: 'gemini',
-      });
-      expect(check.status).toBe('SKIP');
-      expect(check.summary).toContain('Optional: LLM_PROVIDER is configured to');
-    });
-
-    it('should return WARN with remediation when Ollama is unreachable and LLM_PROVIDER is ollama', async () => {
-      const check = await checkOllama({
-        baseUrl: 'http://localhost:59999',
-        activeProvider: 'ollama',
-      });
-      expect(check.status).toBe('WARN');
-      expect(check.remediation).toContain('ollama serve');
-    });
-  });
-
   describe('Gemini Diagnostic Checks', () => {
-    it('should return SKIP when GEMINI_API_KEY is missing and LLM_PROVIDER is ollama', async () => {
+    it('should return SKIP when GEMINI_API_KEY is missing and LLM_PROVIDER is mock', async () => {
       const check = await checkGemini({
         apiKey: '',
-        activeProvider: 'ollama',
+        activeProvider: 'mock',
       });
       expect(check.status).toBe('SKIP');
       expect(check.summary).toContain('Not configured');
@@ -132,10 +111,10 @@ describe('Preflight Verification CLI Suite', () => {
           summary: 'Connected',
         },
         {
-          category: 'AI_PROVIDER',
-          name: 'Ollama Service',
+          category: 'STORAGE',
+          name: 'Document Storage Directory',
           status: 'PASS',
-          summary: 'Online',
+          summary: 'Accessible',
         },
         {
           category: 'AI_PROVIDER',
@@ -177,16 +156,16 @@ describe('Preflight Verification CLI Suite', () => {
           summary: 'Connected',
         },
         {
-          category: 'AI_PROVIDER',
-          name: 'Ollama Service',
+          category: 'STORAGE',
+          name: 'Document Storage Directory',
           status: 'WARN',
-          summary: 'Ollama offline, demo works offline',
+          summary: 'Low disk space warning',
         },
         {
           category: 'AI_PROVIDER',
           name: 'Gemini Provider',
-          status: 'SKIP',
-          summary: 'Not configured',
+          status: 'PASS',
+          summary: 'Connected',
         },
         {
           category: 'DEMO_DATA',
@@ -222,10 +201,10 @@ describe('Preflight Verification CLI Suite', () => {
           summary: 'Connected',
         },
         {
-          category: 'AI_PROVIDER',
-          name: 'Ollama Service',
+          category: 'STORAGE',
+          name: 'Document Storage Directory',
           status: 'PASS',
-          summary: 'Online with models',
+          summary: 'Accessible',
         },
         {
           category: 'AI_PROVIDER',

@@ -14,9 +14,8 @@ import { EXTRACTION_EVAL_DATASET, type EvalScenario } from './graph-extraction.e
 import type { IKnowledgeExtractionProvider } from '../providers/extraction-provider.interface.js';
 import { validateEvidenceInChunk } from '../resolvers/relation.resolver.js';
 import { MockExtractionProvider } from '../providers/mock-extraction.provider.js';
-import { OllamaExtractionProvider } from '../providers/ollama-extraction.provider.js';
 import { EntityNormalizer } from '../normalizers/entity.normalizer.js';
-import { KnowledgeExtractionResponseSchema } from '@mindvault/shared';
+import { KnowledgeExtractionResponseSchema, GeminiExtractionProvider } from '@mindvault/shared';
 
 export interface EvaluationMetrics {
   provider: string;
@@ -284,21 +283,19 @@ if (
 
     // 2. Opt-in Live Model Evaluation
     const runLive =
-      process.argv.includes('--live-ollama') || process.env.LIVE_OLLAMA_EVAL === 'true';
+      process.argv.includes('--live-gemini') || process.env.LIVE_GEMINI_EVAL === 'true';
     if (runLive) {
-      console.log('\n🚀 === [LIVE LLM BENCHMARK] Ollama Model Extraction Evaluation ===');
-      const ollamaProvider = new OllamaExtractionProvider();
-      const health = await ollamaProvider.healthCheck();
+      console.log('\n🚀 === [LIVE LLM BENCHMARK] Gemini Model Extraction Evaluation ===');
+      const geminiProvider = new GeminiExtractionProvider();
+      const health = await geminiProvider.healthCheck();
       if (!health.ok) {
         console.warn(
-          `[WARN] Ollama service not reachable: ${health.message}. Skipping live evaluation.`,
+          `[WARN] Gemini service not ready: ${health.message}. Skipping live evaluation.`,
         );
         return;
       }
-      console.log(
-        `Evaluating Live Ollama Model: ${ollamaProvider.modelName} (think=${ollamaProvider.think}, temp=${ollamaProvider.temperature})...`,
-      );
-      const liveRunner = new GraphExtractionEvalRunner(ollamaProvider);
+      console.log(`Evaluating Live Gemini Model: ${geminiProvider.modelName}...`);
+      const liveRunner = new GraphExtractionEvalRunner(geminiProvider);
       const liveMetrics = await liveRunner.runEvaluation();
       console.log(JSON.stringify(liveMetrics, null, 2));
     }

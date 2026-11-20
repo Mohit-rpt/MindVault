@@ -13,6 +13,7 @@ import type {
   SearchTimingMetadata,
   RawGraphChunkRow,
   RawGraphRelationRow,
+  SearchVectorChunksOptions,
 } from '@mindvault/shared';
 import { QueryProcessor } from '../query/query.processor.js';
 import { EmbeddingService } from '../embeddings/embedding.service.js';
@@ -77,12 +78,39 @@ export class RetrievalService {
     const needsEmbedding =
       mode === 'semantic' || mode === 'hybrid' || mode === 'graph' || mode === 'graphrag';
     let queryVector: number[] | undefined;
+    let queryEmbeddingModel: string | undefined;
 
     if (needsEmbedding) {
       const embStart = performance.now();
-      queryVector = await EmbeddingService.generateQueryVector(processedQuery.normalizedQuery);
-      timings.embeddingGenerationMs = Math.round((performance.now() - embStart) * 100) / 100;
+      try {
+        const generated = await EmbeddingService.generateQueryVectorWithModel(
+          processedQuery.normalizedQuery,
+        );
+        queryVector = generated.vector;
+        queryEmbeddingModel = generated.modelName;
+        timings.embeddingGenerationMs = Math.round((performance.now() - embStart) * 100) / 100;
+      } catch (embErr: unknown) {
+        timings.embeddingGenerationMs = Math.round((performance.now() - embStart) * 100) / 100;
+        const errMsg = embErr instanceof Error ? embErr.message : String(embErr);
+        if (mode === 'hybrid') {
+          // Fail-soft degradation for hybrid mode:
+          // If query vector generation fails (e.g. provider unavailable/timeout), degrade gracefully to keyword-only search
+          console.warn(
+            `[WARN] [RETRIEVAL_HYBRID] Query embedding generation failed in hybrid mode: ${errMsg}. Degrading to keyword-only search.`,
+          );
+          queryVector = undefined;
+          queryEmbeddingModel = undefined;
+        } else {
+          // In semantic, graph, or graphrag modes, vector generation failure fails hard
+          throw embErr;
+        }
+      }
     }
+
+    const vectorFilterOptions: SearchVectorChunksOptions = {
+      ...filterOptions,
+      ...(queryEmbeddingModel ? { embeddingModel: queryEmbeddingModel } : {}),
+    };
 
     // 3. Channel Retrieval Execution
     if (mode === 'graphrag') {
@@ -95,7 +123,7 @@ export class RetrievalService {
 
       // Concurrent dispatch via Promise.all with fail-soft isolation for graph channel
       const [semRes, kwRes, graphOutput] = await Promise.all([
-        dbService.searchVectorChunks(workspaceId, queryVector!, filterOptions).then((res) => {
+        dbService.searchVectorChunks(workspaceId, queryVector!, vectorFilterOptions).then((res) => {
           timings.semanticSearchMs = Math.round((performance.now() - semStart) * 100) / 100;
           return res;
         }),
@@ -189,17 +217,7 @@ export class RetrievalService {
           .filter((r): r is RawGraphRelationRow => Boolean(r)),
       }));
     } else if (mode === 'hybrid') {
-      semanticUsed = true;
       keywordUsed = true;
-
-      const semSearchStart = performance.now();
-      semanticResults = await dbService.searchVectorChunks(
-        workspaceId,
-        queryVector!,
-        filterOptions,
-      );
-      timings.semanticSearchMs = Math.round((performance.now() - semSearchStart) * 100) / 100;
-
       const kwSearchStart = performance.now();
       keywordResults = await dbService.searchKeywordChunks(
         workspaceId,
@@ -207,13 +225,37 @@ export class RetrievalService {
         filterOptions,
       );
       timings.keywordSearchMs = Math.round((performance.now() - kwSearchStart) * 100) / 100;
+
+      if (queryVector && queryVector.length > 0) {
+        semanticUsed = true;
+        const semSearchStart = performance.now();
+        try {
+          semanticResults = await dbService.searchVectorChunks(
+            workspaceId,
+            queryVector,
+            vectorFilterOptions,
+          );
+        } catch (vecErr: unknown) {
+          // Fail-soft degradation: if database vector search fails in hybrid mode, log and degrade to keyword search
+          const errMsg = vecErr instanceof Error ? vecErr.message : String(vecErr);
+          console.warn(
+            `[WARN] [RETRIEVAL_HYBRID] Database vector search failed in hybrid mode: ${errMsg}. Degrading to keyword-only search.`,
+          );
+          semanticResults = [];
+          semanticUsed = false;
+        }
+        timings.semanticSearchMs = Math.round((performance.now() - semSearchStart) * 100) / 100;
+      } else {
+        semanticUsed = false;
+        semanticResults = [];
+      }
     } else if (mode === 'semantic') {
       semanticUsed = true;
       const semSearchStart = performance.now();
       semanticResults = await dbService.searchVectorChunks(
         workspaceId,
         queryVector!,
-        filterOptions,
+        vectorFilterOptions,
       );
       timings.semanticSearchMs = Math.round((performance.now() - semSearchStart) * 100) / 100;
     } else {

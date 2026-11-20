@@ -2,148 +2,100 @@
  * MindVault — Retrieval Engine: Embedding Service & Compatibility Validator
  *
  * Responsibilities:
+ * - Delegates provider resolution to the authoritative EmbeddingProviderRegistry
  * - Generates query embeddings matching the document ingestion model
- * - Enforces the strict 768-dimensional nomic-embed-text invariant
+ * - Enforces the strict 768-dimensional pgvector schema invariant
  * - Rejects dimension and model mismatches with actionable errors
- * - Provides mock provider in test mode and Ollama provider in live mode
+ * - Provides mock provider in test mode and Gemini provider in live mode by default
+ * - Validates document compatibility using the shared EmbeddingModelPolicy
  */
 
-import type { EmbeddingProvider } from '@mindvault/shared';
-import { createHash } from 'crypto';
+import {
+  EmbeddingModelPolicy,
+  type EmbeddingProvider,
+} from '@mindvault/shared';
+import {
+  EmbeddingProviderRegistry,
+  embeddingProviderRegistry,
+  MockEmbeddingProvider,
+  BUILTIN_EMBEDDING_PROVIDERS,
+  EmbeddingRegistryError,
+  UnsupportedEmbeddingProviderError,
+  DuplicateEmbeddingProviderError,
+  InvalidEmbeddingProviderError,
+  type BuiltinEmbeddingProvider,
+  type EmbeddingProviderDescriptor,
+  type EmbeddingProviderFactory,
+  type ProviderRegistrationOptions,
+} from './embedding-provider.registry.js';
 
-/**
- * Deterministic Mock Embedding Provider for isolated unit & integration testing
- */
-export class MockEmbeddingProvider implements EmbeddingProvider {
-  public readonly modelName: string;
-  public readonly dimension: number;
-
-  constructor(modelName = 'mock-embed-768', dimension = 768) {
-    this.modelName = modelName;
-    this.dimension = dimension;
-  }
-
-  public async generateEmbedding(text: string): Promise<number[]> {
-    const hash = createHash('sha256').update(text).digest();
-    const vector = new Array<number>(this.dimension);
-
-    for (let i = 0; i < this.dimension; i++) {
-      const byte = hash[i % hash.length];
-      vector[i] = (byte / 255.0) * 2 - 1;
-    }
-
-    // L2 Normalize
-    const norm = Math.sqrt(vector.reduce((sum, v) => sum + v * v, 0));
-    return norm > 0 ? vector.map((v) => v / norm) : vector;
-  }
-
-  public async generateEmbeddings(texts: string[]): Promise<number[][]> {
-    return Promise.all(texts.map((t) => this.generateEmbedding(t)));
-  }
-}
-
-/**
- * Ollama Embedding Provider for live local LLM embedding generation
- */
-export class OllamaEmbeddingProvider implements EmbeddingProvider {
-  public readonly modelName: string;
-  public readonly dimension: number;
-  private readonly baseUrl: string;
-  private readonly timeoutMs: number;
-
-  constructor(options?: {
-    baseUrl?: string;
-    modelName?: string;
-    dimension?: number;
-    timeoutMs?: number;
-  }) {
-    this.baseUrl = (
-      options?.baseUrl ||
-      process.env.OLLAMA_BASE_URL ||
-      'http://localhost:11434'
-    ).replace(/\/$/, '');
-    this.modelName = options?.modelName || process.env.EMBEDDING_MODEL || 'nomic-embed-text';
-    this.dimension = options?.dimension || 768;
-    this.timeoutMs = options?.timeoutMs || 30000;
-  }
-
-  public async generateEmbedding(text: string): Promise<number[]> {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
-
-    try {
-      const response = await fetch(`${this.baseUrl}/api/embeddings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: this.modelName,
-          prompt: text,
-        }),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => '');
-        throw new Error(
-          `Ollama embedding generation failed (HTTP ${response.status}): ${errorText || response.statusText}`,
-        );
-      }
-
-      const data = (await response.json()) as { embedding: number[] };
-      if (!Array.isArray(data.embedding)) {
-        throw new Error('Malformed embedding response: missing embedding array');
-      }
-
-      if (data.embedding.length !== this.dimension) {
-        throw new Error(
-          `Embedding dimension mismatch: expected ${this.dimension}, received ${data.embedding.length} from model '${this.modelName}'`,
-        );
-      }
-
-      return data.embedding;
-    } catch (err: any) {
-      clearTimeout(timeoutId);
-      if (err.name === 'AbortError') {
-        throw new Error(`Ollama embedding request timed out after ${this.timeoutMs}ms`);
-      }
-      throw err;
-    }
-  }
-
-  public async generateEmbeddings(texts: string[]): Promise<number[][]> {
-    const results: number[][] = [];
-    for (const text of texts) {
-      results.push(await this.generateEmbedding(text));
-    }
-    return results;
-  }
-}
+// Re-export providers, registry, and errors for backward compatibility
+export {
+  MockEmbeddingProvider,
+  EmbeddingProviderRegistry,
+  embeddingProviderRegistry,
+  BUILTIN_EMBEDDING_PROVIDERS,
+  EmbeddingRegistryError,
+  UnsupportedEmbeddingProviderError,
+  DuplicateEmbeddingProviderError,
+  InvalidEmbeddingProviderError,
+  type BuiltinEmbeddingProvider,
+  type EmbeddingProviderDescriptor,
+  type EmbeddingProviderFactory,
+  type ProviderRegistrationOptions,
+};
 
 /**
  * Global Embedding Service managing active embedding provider and compatibility validation
  */
 export class EmbeddingService {
   private static activeProvider: EmbeddingProvider | null = null;
+  private static registry: EmbeddingProviderRegistry = embeddingProviderRegistry;
 
+  /**
+   * Returns the underlying embedding provider registry
+   */
+  public static getRegistry(): EmbeddingProviderRegistry {
+    return this.registry;
+  }
+
+  /**
+   * Overrides the embedding provider registry (primarily for isolated test fixtures)
+   */
+  public static setRegistry(registry: EmbeddingProviderRegistry): void {
+    this.registry = registry;
+    this.activeProvider = null;
+  }
+
+  /**
+   * Resolves the active embedding provider via registry if not explicitly assigned
+   */
   public static getProvider(): EmbeddingProvider {
     if (!this.activeProvider) {
-      if (process.env.NODE_ENV === 'test') {
-        this.activeProvider = new MockEmbeddingProvider();
-      } else {
-        this.activeProvider = new OllamaEmbeddingProvider();
-      }
+      this.activeProvider = this.registry.resolve();
     }
     return this.activeProvider;
   }
 
+  /**
+   * Explicitly sets the active provider (e.g. for mock injection in unit tests)
+   */
   public static setProvider(provider: EmbeddingProvider): void {
     this.activeProvider = provider;
   }
 
+  /**
+   * Resets the active provider instance, forcing re-resolution on next access
+   */
   public static resetProvider(): void {
     this.activeProvider = null;
+  }
+
+  /**
+   * Returns the model identifier of the currently active embedding provider.
+   */
+  public static getModelName(): string {
+    return this.getProvider().modelName;
   }
 
   /**
@@ -163,7 +115,23 @@ export class EmbeddingService {
   }
 
   /**
-   * Validates that the active query model is compatible with indexed workspace documents.
+   * Generates a 768-dimensional query vector and returns both the vector and authoritative model name.
+   * Guarantees strict 1:1 consistency between vector generation and model provenance.
+   */
+  public static async generateQueryVectorWithModel(
+    queryText: string,
+  ): Promise<{ vector: number[]; modelName: string }> {
+    const provider = this.getProvider();
+    const vector = await this.generateQueryVector(queryText);
+    return {
+      vector,
+      modelName: provider.modelName,
+    };
+  }
+
+  /**
+   * Validates that the active query model is compatible with indexed workspace documents
+   * using the authoritative shared EmbeddingModelPolicy.
    */
   public static validateCompatibility(
     targetDocuments?: Array<{ embeddingModel?: string | null; embeddingDimension?: number | null }>,
@@ -189,15 +157,11 @@ export class EmbeddingService {
         };
       }
 
-      // Check model compatibility if specified on document
-      if (
-        doc.embeddingModel &&
-        doc.embeddingModel !== provider.modelName &&
-        process.env.NODE_ENV !== 'test'
-      ) {
+      // Check model compatibility via authoritative EmbeddingModelPolicy
+      if (!EmbeddingModelPolicy.isDocumentCompatible(provider.modelName, doc.embeddingModel)) {
         return {
           compatible: false,
-          reason: `Document embedded with model '${doc.embeddingModel}' is incompatible with query model '${provider.modelName}'`,
+          reason: `Document embedded with model '${doc.embeddingModel || 'NULL'}' is incompatible with query model '${provider.modelName}'`,
         };
       }
     }

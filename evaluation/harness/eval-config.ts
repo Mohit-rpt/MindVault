@@ -22,17 +22,14 @@ export const EVAL_CONFIG = {
   userEmail: 'real-evaluator@mindvault.internal',
   userName: 'MindVault Real-World Evaluator',
 
-  // Real Embedding Provider (Ollama)
-  ollamaBaseUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
-  embeddingModel: 'nomic-embed-text',
+  // Real Embedding Provider (Gemini)
+  embeddingProvider: 'gemini',
+  embeddingModel: 'gemini-embedding-2',
   embeddingDimension: 768,
 
-  // Generation Provider ('gemini' | 'ollama')
-  generationProvider: (process.env.EVAL_GENERATION_PROVIDER || 'gemini') as 'gemini' | 'ollama',
-  generationModel:
-    process.env.EVAL_GENERATION_PROVIDER === 'ollama'
-      ? process.env.OLLAMA_GENERATION_MODEL || 'qwen3:0.6b'
-      : process.env.GEMINI_MODEL || 'gemini-3.5-flash',
+  // Generation Provider ('gemini')
+  generationProvider: (process.env.EVAL_GENERATION_PROVIDER || 'gemini') as 'gemini',
+  generationModel: process.env.GEMINI_MODEL || 'gemini-3.5-flash',
   generationTemperature: 0.1,
   generationMaxTokens: 1024,
   generationTimeoutMs: 30000,
