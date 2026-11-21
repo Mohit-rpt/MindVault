@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import rateLimit, { type Store, type Options, type ClientRateLimitInfo } from 'express-rate-limit';
 import { env } from '../config/env.js';
-import { getRedisHealthClient } from '../routes/health.js';
+import { getApiRedisClient } from '../lib/redis.js';
 import { AppError } from './errorHandler.js';
 
 export interface RedisRateLimiterOptions {
@@ -36,7 +36,7 @@ export class RedisRateLimitStore implements Store {
   }
 
   private getRedis(): any {
-    return this.redisOverride || getRedisHealthClient();
+    return this.redisOverride || getApiRedisClient();
   }
 
   async increment(key: string): Promise<ClientRateLimitInfo> {

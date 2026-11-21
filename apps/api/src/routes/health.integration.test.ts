@@ -11,6 +11,7 @@ vi.mock('../lib/prisma.js', () => ({
 import { createApp } from '../app.js';
 import { prisma } from '../lib/prisma.js';
 import { setRedisHealthClient, getRedisHealthClient } from './health.js';
+import { setApiRedisClient } from '../lib/redis.js';
 import { documentQueue, setDocumentQueue } from '../modules/document/document.queue.js';
 
 describe('MindVault Health Endpoints — Integration Suite', () => {
@@ -23,12 +24,14 @@ describe('MindVault Health Endpoints — Integration Suite', () => {
     delete process.env.DB_CHECK_FORCE_FAIL;
     vi.clearAllMocks();
     setRedisHealthClient(null);
+    setApiRedisClient(undefined);
     setDocumentQueue(originalDocQueue);
   });
 
   afterEach(() => {
     vi.useRealTimers();
     setRedisHealthClient(null);
+    setApiRedisClient(undefined);
     setDocumentQueue(originalDocQueue);
     process.env = { ...originalEnv };
   });
@@ -135,26 +138,16 @@ describe('MindVault Health Endpoints — Integration Suite', () => {
     expect(res.body).toEqual({ status: 'not_ready' });
   });
 
-  // 9. Redis Singleton Reuse from BullMQ
-  it('9. Reuses existing shared Redis client from BullMQ documentQueue without creating new client', () => {
+  // 9. Dedicated API Redis Client Usage
+  it('9. Uses dedicated API Redis client for health checks without scraping BullMQ queues', () => {
     const mockSharedRedis = { ping: vi.fn().mockResolvedValue('PONG') };
-    const mockBullMQQueue = {
-      queue: {
-        backend: {
-          connection: {
-            _client: mockSharedRedis,
-          },
-        },
-      },
-      enqueue: vi.fn(),
-      close: vi.fn(),
-    };
-
-    setDocumentQueue(mockBullMQQueue as any);
-    setRedisHealthClient(null); // Ensure no manual override
+    setApiRedisClient(mockSharedRedis as any);
+    setRedisHealthClient(null); // Ensure no test-only override is set
 
     const client = getRedisHealthClient();
     expect(client).toBe(mockSharedRedis);
+
+    setApiRedisClient(undefined);
   });
 
   // 10. Exact Legacy GET /api/health Response Compatibility

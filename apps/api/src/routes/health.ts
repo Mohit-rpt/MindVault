@@ -7,8 +7,7 @@ import {
 import type { Redis } from 'ioredis';
 import { prisma } from '../lib/prisma.js';
 import { env } from '../config/env.js';
-import { documentQueue } from '../modules/document/document.queue.js';
-import { graphExtractionQueue } from '../modules/graph/queue/graph-extraction.queue.js';
+import { getApiRedisClient } from '../lib/redis.js';
 
 export const healthRouter: Router = Router();
 
@@ -16,27 +15,14 @@ export const healthRouter: Router = Router();
 let testRedisClient: Redis | null = null;
 
 /**
- * Reuses the existing shared Redis client from the API's BullMQ queues.
- * Does not instantiate `new Redis()` or introduce a second connection.
+ * Retrieves the Redis client for health checks and presence probes.
+ * Uses the dedicated API Redis singleton client, or a test override if injected.
  */
 export function getRedisHealthClient(): Redis | null {
   if (testRedisClient !== null) {
     return testRedisClient;
   }
-  // Reuse existing BullMQ Queue connection from documentQueue or graphExtractionQueue
-  const docBullQueue = (documentQueue as any)?.queue;
-  const docClient = docBullQueue?.backend?.connection?._client ?? docBullQueue?.client;
-  if (docClient) {
-    return docClient as Redis;
-  }
-
-  const graphBullQueue = (graphExtractionQueue as any)?.queue;
-  const graphClient = graphBullQueue?.backend?.connection?._client ?? graphBullQueue?.client;
-  if (graphClient) {
-    return graphClient as Redis;
-  }
-
-  return null;
+  return getApiRedisClient();
 }
 
 /**

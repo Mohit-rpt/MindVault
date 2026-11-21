@@ -3,6 +3,7 @@ import { env } from './config/env.js';
 import { ConversationRepository } from './modules/conversations/repositories/conversation.repository.js';
 import { documentQueue } from './modules/document/document.queue.js';
 import { graphExtractionQueue } from './modules/graph/queue/graph-extraction.queue.js';
+import { closeApiRedisClient } from './lib/redis.js';
 
 const app = createApp();
 
@@ -38,6 +39,14 @@ async function shutdown(signal: string): Promise<void> {
     console.log('✅ BullMQ producer queues closed.');
   } catch (err) {
     console.warn('⚠️ Error closing BullMQ queues during shutdown:', err);
+  }
+
+  // Close dedicated API Redis client
+  try {
+    await closeApiRedisClient();
+    console.log('✅ API Redis client closed.');
+  } catch (err) {
+    console.warn('⚠️ Error closing API Redis client during shutdown:', err);
   }
 
   server.close((err) => {

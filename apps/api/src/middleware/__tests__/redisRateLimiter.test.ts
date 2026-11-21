@@ -4,6 +4,7 @@ import {
   createRedisRateLimiter,
   sendRateLimitExceededResponse,
 } from '../redisRateLimiter.js';
+import { setApiRedisClient } from '../../lib/redis.js';
 import { AppError } from '../errorHandler.js';
 
 describe('Sprint 4: Distributed Redis Rate Limiter Suite', () => {
@@ -55,6 +56,49 @@ describe('Sprint 4: Distributed Redis Rate Limiter Suite', () => {
       mockRedis.eval.mockRejectedValueOnce(new Error('Redis Timeout'));
       const res2 = await store.increment('client-ip-3');
       expect(res2.totalHits).toBe(2);
+    });
+
+    it('receives and uses dedicated API Redis client when redisOverride is not passed', async () => {
+      const mockSharedRedis = {
+        eval: vi.fn().mockResolvedValueOnce([1, 45000]),
+      };
+      setApiRedisClient(mockSharedRedis as any);
+
+      // Pass undefined for redisOverride
+      const store = new RedisRateLimitStore('shared_test', undefined, true);
+      store.init({ windowMs: 60000 } as any);
+
+      const res = await store.increment('client-shared-1');
+      expect(res.totalHits).toBe(1);
+      expect(mockSharedRedis.eval).toHaveBeenCalledTimes(1);
+
+      setApiRedisClient(undefined);
+    });
+
+    it('prefers redisOverride over dedicated API Redis client', async () => {
+      const mockSharedRedis = {
+        eval: vi.fn().mockResolvedValueOnce([1, 45000]),
+      };
+      setApiRedisClient(mockSharedRedis as any);
+
+      mockRedis.eval.mockResolvedValueOnce([1, 50000]);
+      // Pass mockRedis explicitly as redisOverride
+      const store = new RedisRateLimitStore('override_test', mockRedis, true);
+      store.init({ windowMs: 60000 } as any);
+
+      const res = await store.increment('client-override-1');
+      expect(res.totalHits).toBe(1);
+      expect(mockRedis.eval).toHaveBeenCalledTimes(1);
+      expect(mockSharedRedis.eval).not.toHaveBeenCalled();
+
+      setApiRedisClient(undefined);
+    });
+
+    it('throws 503 SERVICE_UNAVAILABLE when failClosed is true and redisOverride is disconnected', async () => {
+      const store = new RedisRateLimitStore('disconnected_test', 'disconnected', true);
+      store.init({ windowMs: 60000 } as any);
+
+      await expect(store.increment('client-fail-1')).rejects.toThrow(AppError);
     });
   });
 
